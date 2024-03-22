@@ -41,22 +41,24 @@ here <- here::here
 ```{r reset_analysis_obj, eval=TRUE, include=FALSE}
 # This is moved out of the setup block to avoid accidentally overwriting your
 # analysis object when restarting a session
-analysis = list()
+mmul10_analysis = list()
 ```
 
-# Load config
+# Mmul10
+
+## Load config
 
 ```{r load_config, include=FALSE}
 # Store config with results object for record keeping
-analysis$qc_config <- yaml.load_file(here("config/QC_config.yml"))
+mmul10_analysis$qc_config <- yaml.load_file(here("config/Mmul10_QC_config.yml"))
 ```
 
-# Load samplesheet
+## Load samplesheet
 
 ```{r sample_metadata_setup}
 ## See the helper_script generate_experimental_design_sheet.R to help generate a table,
 ## or modify the template in the config folder and save it as 'exp_design'
-analysis$sampleTable <- read.table(here("config/exp_design.txt"),
+mmul10_analysis$sampleTable <- read.table(here("config/exp_design.txt"),
                                    header=T, 
                                    stringsAsFactors = TRUE)
 
@@ -65,43 +67,44 @@ analysis$sampleTable <- read.table(here("config/exp_design.txt"),
 # analysis$sampleTable <- analysis$sampleTable %>%
 #   mutate(across(.), as.factor)
 
-sample_metadata_table <- knitr::kable((analysis$sampleTable), position='center', table.attr="style='width:100%;'", format='html')# %>%
+sample_metadata_table <- knitr::kable((mmul10_analysis$sampleTable), position='center', table.attr="style='width:100%;'", format='html')# %>%
     #kable_styling(full_width = TRUE)
 # Store the order you'd like samples to appear in figure
 # Order is determined by sampleGrouping parameters in config
 # But you could also manually specify it here if there aren't easy rules
-# sample_order <- fct_inorder(as.character(analysis$sampleTable$SampleID))
+# sample_order <- fct_inorder(as.character(mmul10_analysis$sampleTable$SampleID))
 
 ## for compatibility with filepaths
-analysis$sampleTable$FileID <- as.character(analysis$sampleTable$FileID)
+mmul10_analysis$sampleTable$FileID <- as.character(mmul10_analysis$sampleTable$FileID)
+mmul10_analysis$sampleTable$Timepoint <- as.factor(mmul10_analysis$sampleTable$Timepoint)
 
 sample_metadata_table
 ```
 
-# Load counts tables
+## Load counts tables
 
 ```{r read_counts_tables, include=FALSE}
 STARreadSuffix <- "_ReadsPerGene.out.tab"
 readfiles <- sapply(
-      analysis$sampleTable$FileID,
+      mmul10_analysis$sampleTable$FileID,
       function(sid) {
-       paste0(dir(analysis$qc_config$alignmentDir,
+       paste0(dir(mmul10_analysis$qc_config$alignmentDir,
                   pattern = sid, full.names = TRUE),
               "/", sid, STARreadSuffix)})
           
-outs <- parseReadPerGeneFiles(readfiles, analysis$qc_config$libraryType)
+outs <- parseReadPerGeneFiles(readfiles, mmul10_analysis$qc_config$libraryType)
 
 mapBins <- outs$map_bins
 raw_counts <- outs$read_counts
 
 # order counts as they are in the sampletable
-raw_counts <- raw_counts[,analysis$sampleTable$FileID]
+raw_counts <- raw_counts[,mmul10_analysis$sampleTable$FileID]
 ```
 
-# Load GTF
+## Load GTF
 
 ```{r gene_names, include=TRUE}
-geneInfoTab <- read_tsv(file.path(analysis$qc_config$referenceDir,
+geneInfoTab <- read_tsv(file.path(mmul10_analysis$qc_config$referenceDir,
                                   "geneInfo.tab"),
                         skip = 1,
                         col_names = c("gene_id","gene_symbol","gene_type"))
@@ -121,24 +124,26 @@ raw_counts_ensembl <- raw_counts
 rownames(raw_counts) <- make.names(gene_names, unique=TRUE)
 ```
 
-# Create DESeq object
+## Create DESeq object
 
 ```{r create_dds, include=FALSE}
 ## safety check to make sure metadata and samples are properly associated
-stopifnot(colnames(raw_counts) == analysis$sampleTable$FileID)
+stopifnot(colnames(raw_counts) == mmul10_analysis$sampleTable$FileID)
 
-analysis$dds <- DESeqDataSetFromMatrix(raw_counts,
-                                       analysis$sampleTable,
+mmul10_analysis$dds <- DESeqDataSetFromMatrix(raw_counts,
+                                       mmul10_analysis$sampleTable,
                                        design = as.formula( ~ 1))
 ```
 
-# Mapping bins plots
+## Mapping bins plots
+
 ```{r mapping_plot, fig.width=8, fig.height=6}
-analysis$plots$mapping_bins_plot <- mappingBinsPlot(mapBins)
-analysis$plots$mapping_bins_plot
+mmul10_analysis$plots$mapping_bins_plot <- mappingBinsPlot(mapBins) +
+  scale_x_discrete(labels=mmul10_analysis$dds$SampleID)
+mmul10_analysis$plots$mapping_bins_plot
 ```
 
-# Remove samples
+## Remove samples
 
 ```{r remove_samples}
 ## Removing samples specified in the config. 
@@ -146,54 +151,299 @@ analysis$plots$mapping_bins_plot
 ## removed sample and possibly why it was removed, 
 ## but it could be adjusted to be upstream.
 
-if (!is.null(unlist(analysis$qc_config$dropSamples))){
+if (!is.null(unlist(mmul10_analysis$qc_config$dropSamples))){
   mapBins <- mapBins[
-    ,!colnames(mapBins) %in% analysis$qc_config$dropSamples]
-  analysis$dds <- analysis$dds[
-    ,!(colnames(analysis$dds) %in% analysis$qc_config$dropSamples)]
+    ,!colnames(mapBins) %in% mmul10_analysis$qc_config$dropSamples]
+  mmul10_analysis$dds <- mmul10_analysis$dds[
+    ,!(colnames(mmul10_analysis$dds) %in% mmul10_analysis$qc_config$dropSamples)]
   # sample_order <- sample_order[
-  #   !(sample_order %in% as.factor(analysis$qc_config$dropSamples))]
+  #   !(sample_order %in% as.factor(mmul10_analysis$qc_config$dropSamples))]
   out <- paste0("Sample(s)\n",
-                paste0(analysis$qc_config$dropSamples, sep=", ", collapse = ''),
+                paste0(mmul10_analysis$qc_config$dropSamples, sep=", ", collapse = ''),
                 "\nbeing removed from downstream analysis per user specification.") 
     cat(out)
 } 
 ```
 
-# VST and RLD
+## VST and RLD
 
 ```{r vst_and_ddsDrop}
-analysis$dds <- DESeq(analysis$dds, parallel = TRUE)
-assays(analysis$dds)$vst <- varianceStabilizingTransformation(analysis$dds,
+mmul10_analysis$dds <- DESeq(mmul10_analysis$dds, parallel = TRUE)
+assays(mmul10_analysis$dds)$vst <- varianceStabilizingTransformation(mmul10_analysis$dds,
                                                          blind = FALSE,
                                                          fitType = "parametric")
 
-assays(analysis$dds)$rld <- rlog(analysis$dds,
+assays(mmul10_analysis$dds)$rld <- rlog(mmul10_analysis$dds,
                                  blind = FALSE,
                                  fitType = "parametric")
 ```
 
-# RLE plots
+## RLE plots
 
 Library size normalization of read counts with hypothesis that most genes are 
 not differentially expressed
 
-```{r rle, fig.width = 6, fig.height=5}
-rle_plots <- checkRLE(analysis$dds)
-analysis$plots$RLE_raw <- rle_plots$RLE_raw
-analysis$plots$RLE_norm <- rle_plots$RLE_norm
+```{r rle, fig.width = 16, fig.height=15}
+rle_plots <- checkRLE(mmul10_analysis$dds)
+mmul10_analysis$plots$RLE_raw <- rle_plots$RLE_raw +
+  scale_x_discrete(labels=mmul10_analysis$dds$SampleID)
+mmul10_analysis$plots$RLE_norm <- rle_plots$RLE_norm +
+  scale_x_discrete(labels=mmul10_analysis$dds$SampleID)
+mmul10_analysis$plots$RLE_raw 
+mmul10_analysis$plots$RLE_norm
 ```
 
-# PCA
+## PCA
 
 Exploring projections of expression profiles onto low dimensional space using a 
 limited number of highly variable features. This will give us an estimate of 
 similarity between samples, but will not account for all genes.
 
-```{r pca, fig.width=12, fig.height=8, warning=FALSE}
-analysis$plots$pca <- plotPCAFromConfig(analysis)
-print(analysis$plots$pca)
+```{r}
+pcaPlotSimple <- function(counts, xpc = 1, ypc = 2, ntop = 500, metadata) {
+  rv <- matrixStats::rowVars(counts)
+  select <- order(rv, decreasing = TRUE)[seq_len(min(
+    ntop,
+    length(rv)
+  ))]
+  pca <- stats::prcomp(t(counts[select,]))
+  d <- merge(pca$x, metadata, by.x = 'row.names', by.y = 'row.names')
+  # attr(d, "percentVar") <- percentVar
+  percentVar <- pca$sdev^2 / sum(pca$sdev^2)
+  percentVar <- round(100 * percentVar)
+  ggplot(d, aes(x = .data[[paste0('PC',xpc)]], y = .data[[paste0('PC',ypc)]])) +
+    labs(x = paste0('PC',xpc, ": ", percentVar[xpc], "% variance"), 
+         y = paste0('PC',ypc, ": ", percentVar[ypc], "% variance"))
+  
+}
 ```
+
+```{r}
+pbmc_subset <- mmul10_analysis$dds[,mmul10_analysis$dds$Tissue=='PBMC']
+mmul10_analysis$plots$pbmc_pca <- 
+  pcaPlotSimple(assay(assays(pbmc_subset)$vst), metadata = colData(pbmc_subset)) +
+  geom_point(aes(color = Individual, shape=Timepoint)) + 
+  theme_bw()
+```
+
+```{r}
+rb_subset <- mmul10_analysis$dds[,mmul10_analysis$dds$Tissue=='rectal-biopsy']
+mmul10_analysis$plots$rb_pca <- 
+  pcaPlotSimple(assay(assays(rb_subset)$vst), metadata = colData(rb_subset)) +
+  geom_point(aes(color = Individual, shape=Timepoint)) + 
+  theme_bw()
+```
+
+
+```{r pca, fig.width=12, fig.height=8, warning=FALSE, eval = FALSE}
+mmul10_analysis$plots$pca <- plotPCAFromConfig(mmul10_analysis)
+print(mmul10_analysis$plots$pca)
+```
+
+# Mnem
+
+## Load config
+
+```{r}
+mnem_analysis <- list()
+```
+
+
+```{r load_config, include=FALSE}
+# Store config with results object for record keeping
+mnem_analysis$qc_config <- yaml.load_file(here("config/Mnem_QC_config.yml"))
+```
+
+## Load samplesheet
+
+```{r sample_metadata_setup}
+## See the helper_script generate_experimental_design_sheet.R to help generate a table,
+## or modify the template in the config folder and save it as 'exp_design'
+mnem_analysis$sampleTable <- read.table(here("config/exp_design.txt"),
+                                   header=T, 
+                                   stringsAsFactors = TRUE)
+
+## Possible types of processing to arrange or factorize terms
+#mnem_analysis$sampleTable <- mnem_analysis$sampleTable %>% dplyr::arrange(across(all_of(mnem_analysis$qc_config$sampleGrouping)))
+# mnem_analysis$sampleTable <- mnem_analysis$sampleTable %>%
+#   mutate(across(.), as.factor)
+
+sample_metadata_table <- knitr::kable((mnem_analysis$sampleTable), position='center', table.attr="style='width:100%;'", format='html')# %>%
+    #kable_styling(full_width = TRUE)
+# Store the order you'd like samples to appear in figure
+# Order is determined by sampleGrouping parameters in config
+# But you could also manually specify it here if there aren't easy rules
+# sample_order <- fct_inorder(as.character(mnem_analysis$sampleTable$SampleID))
+
+## for compatibility with filepaths
+mnem_analysis$sampleTable$FileID <- as.character(mnem_analysis$sampleTable$FileID)
+mnem_analysis$sampleTable$Timepoint <- as.factor(mnem_analysis$sampleTable$Timepoint)
+
+sample_metadata_table
+```
+
+## Load counts tables
+
+```{r read_counts_tables, include=FALSE}
+STARreadSuffix <- "_ReadsPerGene.out.tab"
+readfiles <- sapply(
+      mnem_analysis$sampleTable$FileID,
+      function(sid) {
+       paste0(dir(mnem_analysis$qc_config$alignmentDir,
+                  pattern = sid, full.names = TRUE),
+              "/", sid, STARreadSuffix)})
+          
+outs <- parseReadPerGeneFiles(readfiles, mnem_analysis$qc_config$libraryType)
+
+mapBins <- outs$map_bins
+raw_counts <- outs$read_counts
+
+# order counts as they are in the sampletable
+raw_counts <- raw_counts[,mnem_analysis$sampleTable$FileID]
+```
+
+## Load GTF
+
+```{r gene_names, include=TRUE}
+geneInfoTab <- read_tsv(file.path(mnem_analysis$qc_config$referenceDir,
+                                  "geneInfo.tab"),
+                        skip = 1,
+                        col_names = c("gene_id","gene_symbol","gene_type"))
+
+## Remove samples if there are fewer total fragment counts than features
+## could catch a technical error if data isn't loading correctly
+## (but you should see this in the mapping plot)
+lowcounts <- colSums(raw_counts) < nrow(geneInfoTab)
+stopifnot(!sum(lowcounts)>0)
+
+gene_names <- plyr::mapvalues(rownames(raw_counts), 
+                        from=geneInfoTab$gene_id,
+                        to=geneInfoTab$gene_symbol)
+
+## save this in case you want to write it out
+raw_counts_ensembl <- raw_counts
+rownames(raw_counts) <- make.names(gene_names, unique=TRUE)
+```
+
+## Create DESeq object
+
+```{r create_dds, include=FALSE}
+## safety check to make sure metadata and samples are properly associated
+stopifnot(colnames(raw_counts) == mnem_analysis$sampleTable$FileID)
+
+mnem_analysis$dds <- DESeqDataSetFromMatrix(raw_counts,
+                                       mnem_analysis$sampleTable,
+                                       design = as.formula( ~ 1))
+```
+
+## Mapping bins plots
+
+```{r mapping_plot, fig.width=8, fig.height=6}
+mnem_analysis$plots$mapping_bins_plot <- mappingBinsPlot(mapBins) +
+  scale_x_discrete(labels=mnem_analysis$dds$SampleID)
+mnem_analysis$plots$mapping_bins_plot
+```
+
+## Remove samples
+
+```{r remove_samples}
+## Removing samples specified in the config. 
+## This occurs after the mapBin plot just to have record of the 
+## removed sample and possibly why it was removed, 
+## but it could be adjusted to be upstream.
+
+if (!is.null(unlist(mnem_analysis$qc_config$dropSamples))){
+  mapBins <- mapBins[
+    ,!colnames(mapBins) %in% mnem_analysis$qc_config$dropSamples]
+  mnem_analysis$dds <- mnem_analysis$dds[
+    ,!(colnames(mnem_analysis$dds) %in% mnem_analysis$qc_config$dropSamples)]
+  # sample_order <- sample_order[
+  #   !(sample_order %in% as.factor(mnem_analysis$qc_config$dropSamples))]
+  out <- paste0("Sample(s)\n",
+                paste0(mnem_analysis$qc_config$dropSamples, sep=", ", collapse = ''),
+                "\nbeing removed from downstream mnem_analysis per user specification.") 
+    cat(out)
+} 
+```
+
+## VST and RLD
+
+```{r vst_and_ddsDrop}
+mnem_analysis$dds <- DESeq(mnem_analysis$dds, parallel = TRUE)
+assays(mnem_analysis$dds)$vst <- varianceStabilizingTransformation(mnem_analysis$dds,
+                                                         blind = FALSE,
+                                                         fitType = "parametric")
+
+assays(mnem_analysis$dds)$rld <- rlog(mnem_analysis$dds,
+                                 blind = FALSE,
+                                 fitType = "parametric")
+```
+
+## RLE plots
+
+Library size normalization of read counts with hypothesis that most genes are 
+not differentially expressed
+
+```{r rle, fig.width = 16, fig.height=15}
+rle_plots <- checkRLE(mnem_analysis$dds)
+mnem_analysis$plots$RLE_raw <- rle_plots$RLE_raw + 
+  scale_x_discrete(labels=mnem_analysis$dds$SampleID)
+
+mnem_analysis$plots$RLE_norm <- rle_plots$RLE_norm +
+  scale_x_discrete(labels=mnem_analysis$dds$SampleID)
+mnem_analysis$plots$RLE_raw 
+mnem_analysis$plots$RLE_norm
+```
+
+## PCA
+
+Exploring projections of expression profiles onto low dimensional space using a 
+limited number of highly variable features. This will give us an estimate of 
+similarity between samples, but will not account for all genes.
+
+```{r}
+pcaPlotSimple <- function(counts, xpc = 1, ypc = 2, ntop = 500, metadata) {
+  rv <- matrixStats::rowVars(counts)
+  select <- order(rv, decreasing = TRUE)[seq_len(min(
+    ntop,
+    length(rv)
+  ))]
+  pca <- stats::prcomp(t(counts[select,]))
+  d <- merge(pca$x, metadata, by.x = 'row.names', by.y = 'row.names')
+  # attr(d, "percentVar") <- percentVar
+  percentVar <- pca$sdev^2 / sum(pca$sdev^2)
+  percentVar <- round(100 * percentVar)
+  ggplot(d, aes(x = .data[[paste0('PC',xpc)]], y = .data[[paste0('PC',ypc)]])) +
+    labs(x = paste0('PC',xpc, ": ", percentVar[xpc], "% variance"), 
+         y = paste0('PC',ypc, ": ", percentVar[ypc], "% variance"))
+  
+}
+```
+
+```{r}
+pbmc_subset <- mnem_analysis$dds[,mnem_analysis$dds$Tissue=='PBMC']
+mnem_analysis$plots$pbmc_pca <- 
+  pcaPlotSimple(assay(assays(pbmc_subset)$vst), metadata = colData(pbmc_subset)) +
+  geom_point(aes(color = Individual, shape=Timepoint)) +
+  theme_bw()
+mnem_analysis$plots$pbmc_pca
+```
+
+```{r}
+rb_subset <- mnem_analysis$dds[,mnem_analysis$dds$Tissue=='rectal-biopsy']
+mnem_analysis$plots$rb_pca <- 
+  pcaPlotSimple(assay(assays(rb_subset)$vst), metadata = colData(rb_subset)) +
+  geom_point(aes(color = Individual, shape=Timepoint)) + 
+  theme_bw()
+mnem_analysis$plots$rb_pca
+```
+
+
+```{r pca, fig.width=12, fig.height=8, warning=FALSE}
+mnem_analysis$plots$pca <- plotPCAFromConfig(mnem_analysis)
+print(mnem_analysis$plots$pca)
+```
+
 
 # Write tables
 
