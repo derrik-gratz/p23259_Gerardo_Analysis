@@ -452,13 +452,18 @@ writeCountTables(mmul10_analysis,
                  normalized = FALSE,
                  generate_GSEA_app_tables = FALSE,
                  write_sample_table = FALSE)
+writeCountTables(mnem_analysis, 
+                 normalized = FALSE,
+                 generate_GSEA_app_tables = FALSE,
+                 write_sample_table = FALSE)
 ```
 
 # Save object
 
 ```{r}
 if (!dir.exists(here('rds'))){dir.create(here('rds'))}
-saveRDS(analysis, here('rds/analysis_post_QC.Rds'))
+saveRDS(mmul10_analysis, here('rds/mmul10_analysis_post_QC.Rds'))
+saveRDS(mnem_analysis, here('rds/mnem_analysis_post_QC.Rds'))
 ```
 
 # Render report
