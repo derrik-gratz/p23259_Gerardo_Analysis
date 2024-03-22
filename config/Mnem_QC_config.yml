@@ -1,9 +1,9 @@
 # Analysis title
-analysis: p22315_Sudhir_Analysis
+analysis: p23259_Gerardo_Analysis
 # STAR reference genome directory use for aligning, should holds "geneInfo.tab" 
-referenceDir: /yerkes-cifs/runs/Genome_references/macaca_mulatta/mmul10/ensembl_104/star_index_2.7.9a/
+referenceDir: /yerkes-cifs/runs/Genome_references/macaca_nemestrina/ensembl_95/STAR_2.7.9a
 # STAR feature counts files directory
-alignmentDir: /yerkes-cifs/runs/Analysis/2023_Analyses/p22315_Sudhir/p22315_Sudhir_Processing
+alignmentDir: /yerkes-cifs/runs/Analysis/2024_Analyses/p23259_Gerardo/p23259_Gerardo_Processing/S2.7.9a_Mnem-95
 # column of the STAR output file to draw from (unstranded, sense, or antisense)
 libraryType: antisense
 # Samples to drop, using the same names as the "sample ID" column of the exp_design_template
@@ -12,7 +12,7 @@ dropSamples:
 # Metadata to use for PCA plot overlays. Use column names in the exp_design file. Leave blank to ignore aes
 pcaMapping: 
   color: Individual
-  shape: Celltype
+  shape: Tissue
   label: SampleID
   path: 
   ellipse: 
