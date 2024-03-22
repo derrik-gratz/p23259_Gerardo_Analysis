@@ -448,10 +448,10 @@ print(mnem_analysis$plots$pca)
 # Write tables
 
 ```{r}
-writeCountTables(analysis,
+writeCountTables(mmul10_analysis, 
                  normalized = FALSE,
                  generate_GSEA_app_tables = FALSE,
-                 write_sample_table = TRUE)
+                 write_sample_table = FALSE)
 ```
 
 # Save object

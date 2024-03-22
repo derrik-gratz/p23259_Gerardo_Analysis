@@ -1,5 +1,5 @@
 # Analysis title
-analysis: p23259_Gerardo_Analysis
+analysis: p23259_Gerardo_Mmul10
 # STAR reference genome directory use for aligning, should holds "geneInfo.tab" 
 referenceDir: /yerkes-cifs/runs/Genome_references/macaca_mulatta/mmul10/ensembl_104/star_index_2.7.9a/
 # STAR feature counts files directory

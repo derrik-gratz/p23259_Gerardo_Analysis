@@ -17,17 +17,6 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo=FALSE, fig.width = 
 
 # Study overview
 
-All metadata gleaned from sample names. Timepoints are calculated by the order of
-sample dates for each individual/tissue combo. So the first timepoint will be the
-earliest sample for that individual/tissue. However, there appears to be an error
-in one samples labeling: Z15228 has samples from only 1 timepoint, and Z15229 has
-samples from 2 timepoints. 
-
-**Are some of these samples mislabeled? Should Z15228 and Z15229 be the same individual?**
-
-If this is the case, the timepoint calculation will be resolved as there will 
-be 3 samples for that individual.
-
 ```{r}
 sample_metadata_table
 ```
