@@ -27,6 +27,12 @@ sample_metadata_table
 
 Outcomes from mapping reads to reference genome. Reads need to be 'identified' or successfully mapped to a single feature to be used for gene expression analysis.
 
+```{r}
+ref_comp_figs[['table']]
+```
+
+
+
 :::: {class='fluid-row'}
 
 ::: {class='col-md-6'}
@@ -37,6 +43,15 @@ Outcomes from mapping reads to reference genome. Reads need to be 'identified' o
 mmul10_analysis$plots$mapping_bins_plot
 ```
 
+```{r}
+ref_comp_figs[['Mmul10_all']]
+```
+
+```{r}
+ref_comp_figs[['Mmul10_symbols']]
+```
+
+
 :::
 
 ::: {class='col-md-6'}
@@ -45,6 +60,14 @@ mmul10_analysis$plots$mapping_bins_plot
 
 ```{r, fig.width=8, fig.height=4}
 mnem_analysis$plots$mapping_bins_plot
+```
+
+```{r}
+ref_comp_figs[['Mnem_all']]
+```
+
+```{r}
+ref_comp_figs[['Mnem_symbols']]
 ```
 
 :::

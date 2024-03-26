@@ -25,6 +25,7 @@ library(here)         ## For consistent directory structures
 ##library(plotly)     ## If you want interactive PCA
 library(ggrepel)      ## for PCA plot repel text
 library(plyr)
+library(reshape2)
 
 
 ##remotes::install_github('yerkes-gencore/gencore-bulk',force = TRUE)
@@ -444,6 +445,75 @@ mnem_analysis$plots$pca <- plotPCAFromConfig(mnem_analysis)
 print(mnem_analysis$plots$pca)
 ```
 
+# Compare refs
+
+```{r}
+ref_comp_figs <- list()
+```
+
+```{r}
+a <- rowSums(assay(mmul10_analysis$dds))
+a <- a[a>0]
+b <- rowSums(assay(mnem_analysis$dds)) 
+b <- b[b>0]
+c <- intersect(names(a), names(b))
+d <- sort(a[!(names(a) %in% c)], decreasing = TRUE)
+e <- sort(b[!(names(b) %in% c)], decreasing = TRUE)
+
+d <- melt(d) %>% rownames_to_column('gene')
+d$gene <- factor(d$gene, levels = d$gene)
+
+e <- melt(e) %>% rownames_to_column('gene')
+e$gene <- factor(e$gene, levels = e$gene)
+```
+
+```{r}
+ref_comp_figs[['table']] <- knitr::kable(data.frame('Mmul10'=c(nrow(d), 
+                                   round(100*sum(d$value)/sum(a)),
+                                   median(d$value)), 
+                        'Mnem'=c(nrow(e), 
+                                 round(100*sum(e$value)/sum(b)),
+                                 median(e$value)), 
+                        'Shared'=c(length(c),
+                                   '-',
+                                   median(c(a[c], b[c]))),
+                        row.names = c('Unique genes', '% of total reads', 'Median read count')))
+ref_comp_figs[['table']]
+```
+
+```{r}
+ref_comp_figs[['Mnem_all']] <- ggplot(head(e,20), aes(x=gene, y=value)) + 
+  geom_col() + 
+  theme_bw() +
+  ylim(c(0,6e06)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title='Unique to Mnem', y='read counts')
+ref_comp_figs[['Mmul10_all']] <- ggplot(head(d,20), aes(x=gene, y=value)) + 
+  geom_col() + 
+  theme_bw() +
+  ylim(c(0,6e06)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title='Unique to Mmul10', y='read counts')
+ref_comp_figs[['Mnem_all']]
+ref_comp_figs[['Mmul10_all']]
+```
+
+```{r}
+ref_comp_figs[['Mnem_symbols']] <- ggplot(head(e[!grepl('^ENS', e$gene),],20), aes(x=gene, y=value)) + 
+  geom_col() + 
+  theme_bw() +
+  ylim(c(0,2e06)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title='Unique to Mnem', y='read counts', caption='Only looking at genes with symbols, not ENS IDs')
+ref_comp_figs[['Mmul10_symbols']] <- ggplot(head(d[!grepl('^ENS', d$gene),],20), aes(x=gene, y=value)) + 
+  geom_col() + 
+  theme_bw() +
+  ylim(c(0,2e06)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title='Unique to Mmul10', y='read counts', caption='Only looking at genes with symbols, not ENS IDs')
+ref_comp_figs[['Mnem_symbols']]
+ref_comp_figs[['Mmul10_symbols']]
+```
 
 # Write tables
 
