@@ -15,8 +15,8 @@ output:
 knitr::opts_chunk$set(warning = FALSE,
                       message = FALSE, 
                       echo=FALSE,
-                      fig.width = 6,
-                      fig.height = 4,
+                      fig.width = 8,
+                      fig.height = 6,
                       dev='png')
 ```
 
@@ -35,9 +35,9 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r}
 metadata %>%
-  select(-c(FileID, date, ellipse, SampleID, sizeFactor, replaceable)) %>%
+  select(c(Tissue, Individual, Date, Timepoint)) %>%
   DT::datatable( 
-    colnames = c('Group', 'Individual', 'Timepoint', 'Group ID'),
+    colnames = c('Group', 'Individual', 'Date', 'Timepoint'),
     rownames = TRUE,
     filter = 'top')
   # select(sampleID, SubjectID, grp)
@@ -49,23 +49,29 @@ metadata %>%
 metadata_summary
 ```
 
-### Samples by individual + timepoint
-
 ```{r}
-table(metadata$individual, metadata$timepoint)
+table(metadata$Individual, metadata$Timepoint, metadata$Tissue)
 ```
 
-### Samples by group + timepoint
+# Model design consideration
+
+With the available metadata, two model types were available:.
+The first would use all the data together, attempting
+to fit terms for the tissues, individuals, and timepoints. This would potentially improve our ability to characterize
+the expression unique to individuals (as we have more samples per individual/timepoint), separating that from the change across groups and providing a cleaner estimate of changes over time. It would also allow us to make comparisons across
+tissues, if that was of interest. 
+
+The other approach would separate the two tissues into separate models, each fit for the individual and timepoints. This
+would lose the benefit of pooling multiple samples from the same individual, but may improve the fit on a per-tissue level. It would also prevent us from comparing across tissues, if that was relevant. 
+
+I review both model types here by looking at the number of significantly differentially expressed genes in each contrast.
+Some comparisons are not possible with the separate models, but the joined model loses some statistical power due to the overwhelming differences between the two tissue types. The difference between the tissues is stronger than the difference between timepoints, making it harder to detect differences between timepoints. 
 
 ```{r}
-table(metadata$Group, metadata$timepoint)
+model_comp_table
 ```
 
-### Samples by individual + group
-
-```{r}
-table(metadata$individual, metadata$ind, metadata$Group)
-```
+Unless comparisons between tissues are of interest, it seems more appropriate to fit separate models for each tissue and evaluate them independently. Comparisons of response between tissues are unlikely to provide interesting results anyways, as the tissues are too different even at baseline to separate the signal due to the experimental intervention.
 
 # Model design
 
@@ -99,28 +105,30 @@ contrast_matrix %>% t() %>% knitr::kable()
 
 # Results summary
 
-```{r}
-plots[['overall_table']]
-```
-
-# Case example ISG15
-
-Looking at ISG15 expression as an indicator of model accuracy
+The rectal biopsy model has more detectable signal than the PBMC model. Neither model
+resolves much signal between the response at W12 and the response at W18 (accounting for the difference from baseline).
 
 ```{r}
-plots[['ISG15_overall']]
+model_summary_table
 ```
+
+# Case examples
+
+Tracking expression in some high-variance genes visually and with model results to validate model. 
+Values in the heatmap are normalized to the 'pre' timepoint for 
+that individual. Plotting data for PBMCs.
+
+
+```{r, fig.width=4, fig.height=2.8}
+casestudy_heatmap_pbmc
+```
+
+Table of DGE stats for the case study genes
 
 ```{r}
-plots[["ISG15_overall_table"]]
+casestudy_table
 ```
 
 
-```{r}
-plots[['ISG15_D2']]
-```
 
 
-```{r}
-plots[['ISG15_D14']]
-```

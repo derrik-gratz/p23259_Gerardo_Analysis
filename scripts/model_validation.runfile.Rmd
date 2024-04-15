@@ -9,71 +9,68 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(warning = FALSE,
-                      message = FALSE, 
+knitr::opts_chunk$set(warning = TRUE,
+                      message = TRUE, 
                       echo=FALSE,
                       fig.width = 6,
                       fig.height = 4,
                       dev='png')
 library(tidyverse)    ## General logic and processing
-# library(DESeq2)       ## Makes us have a job
+library(DESeq2)       ## Makes us have a job
 library(here)         ## For consistent directory structures
-library(edgeR)
+# library(edgeR)
 library(DT)
 library(reshape2)
 library(gencoreBulk)
+library(dplyr)
+library(knitr)
+library(kableExtra)
 ```
 
 # Read metadata
 
 ```{r}
-obj <- readRDS(here('saved_rds_objects/analysis_post_QC.Rds'))
+obj <- readRDS(here('rds/mnem_analysis_post_QC.Rds'))
 ```
 
 ```{r}
-obj$dds$timepoint <- factor(obj$dds$timepoint, levels = c('D0', 'D2', 'D4', 'D8', 'D14', 'D28'))
-obj$dds$Group <- factor(obj$dds$Group, levels = c('Bolus', 'Escalating'))
-obj$dds$ind <- factor(plyr::mapvalues(obj$dds$individual,
-                                         from = c('RAt19', 'RCl19', 'RKd19', 'RKf19', 'RKn19',
-                                                  'RFg19', 'RKr19', 'ROj19', 'RPm19', 'RZm19'),
-                                         to = c(1:5, 1:5)))
+obj$dds$Timepoint <- factor(plyr::mapvalues(obj$dds$Timepoint, 
+                                            from=c(1,2,3),
+                                            to=c('pre', 'W12', 'W18')), 
+                            levels=c('pre', 'W12', 'W18'))
 ```
 
 ```{r}
-metadata <- as.data.frame(obj$md$sampleTable)
-exp_data <- obj$dge
+metadata <- as.data.frame(obj$dds@colData)
+exp_data <- obj$dds
 plots <- list()
 ```
 
 ```{r}
 metadata %>%
-  select(-c(FileID, ellipse, SampleID, sizeFactor, replaceable))
+  select(-c(FileID, SampleID, sizeFactor, replaceable))
   # select(sampleID, SubjectID, grp)
 ```
 
 ```{r}
-relevant_cols <- colnames(metadata %>% select(-c(FileID, ellipse, SampleID, sizeFactor, replaceable)))
+relevant_cols <- colnames(metadata %>% select(-c(FileID, SampleID, sizeFactor, replaceable)))
 metadata_summary <- lapply(relevant_cols, function(x) table(unlist((metadata[[x]]))))
 names(metadata_summary) <- relevant_cols
 metadata_summary
 ```
 
 ```{r}
-table(metadata$individual, metadata$timepoint)
+table(metadata$Individual, metadata$Timepoint)
 ```
 
 ```{r}
-table(metadata$Group, metadata$timepoint)
+table(metadata$Individual, metadata$Timepoint, metadata$Tissue)
 ```
 
-```{r}
-table(metadata$individual, metadata$ind, metadata$Group)
-```
-
-# Design
+# Design 1 - Combined tissues
 
 ```{r}
-design_formula <- as.formula('~ day + grp + grp:day')
+design_formula <- as.formula('~ Tissue + Timepoint + Individual + Timepoint:Tissue')
 design_matrix  <- stats::model.matrix(design_formula, data = metadata)
 colnames(design_matrix)
 ```
@@ -84,24 +81,14 @@ design_matrix
 
 ## Fit design
 
-### DESeq
-
 ```{r}
 design(obj$dds) <- design_formula
-stopifnot(colnames(analysis$dds) == analysis$sampleTable$SampleID)
+stopifnot(colnames(obj$dds) == rownames(obj$dds@colData))
 obj$dds <- DESeq2::DESeq(obj$dds)
 ```
 
-### edgeR
 
-```{r}
-model_fit <- edgeR::voomLmFit(counts = obj$dge,
-                              design = design_matrix,
-                              block = metadata$SubjectID,
-                              sample.weights = TRUE)
-```
-
-# Define contrasts
+## Define contrasts
 
 Explicitly write out full contrast formulas, including terms that will cancel and
 expanded interaction terms.
@@ -120,72 +107,55 @@ functions for plotting (WIP)
 ```{r}
 contrast_matrix_expanded <- data.frame(
   contrast_names = c(
-    'Bolus_D2',
-    'Bolus_D4',
-    'Bolus_D8',
-    'Bolus_D14',
-    'Bolus_D28',
-    'Escalating_D2',
-    'Escalating_D4',
-    'Escalating_D8',
-    'Escalating_D14',
-    'Escalating_D28',
-    'D2_Escalating.v.Bolus',
-    'D4_Escalating.v.Bolus',
-    'D8_Escalating.v.Bolus',
-    'D14_Escalating.v.Bolus',
-    'D28_Escalating.v.Bolus'
+    'W12_v_pre.allTissue',
+    'W12_v_pre.rb',
+    'W12_v_pre.pbmc',
+    'W18_v_pre.allTissue',
+    'W18_v_pre.rb',
+    'W18_v_pre.pbmc',
+    'W18_v_W12.allTissue',
+    'W18_v_W12.rb',
+    'W18_v_W12.pbmc',
+    'rb_v_pbmc.W12',
+    'rb_v_pbmc.W18'
   ),
   numerators = c(
-    'timepointD2',
-    'timepointD4',
-    'timepointD8',
-    'timepointD14',
-    'timepointD28',
-    'GroupEscalating + timepointD2 + timepointD2.GroupEscalating',
-    'GroupEscalating + timepointD4 + timepointD4.GroupEscalating',
-    'GroupEscalating + timepointD8 + timepointD8.GroupEscalating',
-    'GroupEscalating + timepointD14 + timepointD14.GroupEscalating',
-    'GroupEscalating + timepointD28 + timepointD28.GroupEscalating',
-    '( GroupEscalating + timepointD2 + timepointD2.GroupEscalating ) - ( GroupEscalating + timepointD0 )',
-    '( GroupEscalating + timepointD4 + timepointD4.GroupEscalating ) - ( GroupEscalating + timepointD0 )',
-    '( GroupEscalating + timepointD8 + timepointD8.GroupEscalating ) - ( GroupEscalating + timepointD0 )',
-    '( GroupEscalating + timepointD14 + timepointD14.GroupEscalating ) - ( GroupEscalating + timepointD0 )',
-    '( GroupEscalating + timepointD28 + timepointD28.GroupEscalating ) - ( GroupEscalating + timepointD0 )'
+   '(Intercept) + TimepointW12 + 0.5*( Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW12 )',
+   '(Intercept) + TimepointW12 + Tissuerectal-biopsy+ Tissuerectal-biopsy:TimepointW12',
+   '(Intercept) + TimepointW12',
+   '(Intercept) + TimepointW18 + 0.5*( Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW18 )',
+   '(Intercept) + TimepointW18 + Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW18',
+   '(Intercept) + TimepointW18',
+   '(Intercept) + TimepointW18 + 0.5*( Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW18 )',
+   '(Intercept) + TimepointW18 + Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW18',
+   '(Intercept) + TimepointW18',
+   '(Intercept) + TimepointW12 + Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW12',
+   '(Intercept) + TimepointW18 + Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW18'
   ),
   denominators = c(
-    'timepointD0',
-    'timepointD0',
-    'timepointD0',
-    'timepointD0',
-    'timepointD0',
-    'GroupEscalating + timepointD0',
-    'GroupEscalating + timepointD0',
-    'GroupEscalating + timepointD0',
-    'GroupEscalating + timepointD0',
-    'GroupEscalating + timepointD0',
-    'timepointD2 - timepointD0',
-    'timepointD4 - timepointD0',
-    'timepointD8 - timepointD0',
-    'timepointD14 - timepointD0',
-    'timepointD28 - timepointD0'
+   '(Intercept) + 0.5* Tissuerectal-biopsy',
+   '(Intercept) + Tissuerectal-biopsy',
+   '(Intercept)',
+   '(Intercept) + 0.5* Tissuerectal-biopsy',
+   '(Intercept) + Tissuerectal-biopsy',
+   '(Intercept)',
+   '(Intercept) + TimepointW12 + 0.5*( Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW12 )',
+   '(Intercept) + TimepointW12 + Tissuerectal-biopsy + Tissuerectal-biopsy:TimepointW12',
+   '(Intercept) + TimepointW12',
+   '(Intercept) + TimepointW12',
+   '(Intercept) + TimepointW18'
   )
 )
 ```
 
 
 ```{r}
-## have to make valid names first
-## Current workflow requires user to make valid names instead
-# contrast_matrix <- contrast_matrix_expanded
-# contrast_matrix$denominators <-
-#   sapply(contrast_matrix$denominators, function(x) {
-#     paste(make.names(unlist(strsplit(x, perl = TRUE, split = '\\s*\\+\\s*'))), collapse = ' + ')
-#   })
-# contrast_matrix$numerators <-
-#   sapply(contrast_matrix$numerators, function(x) {
-#     paste(make.names(unlist(strsplit(x, perl = TRUE, split = '\\s*\\+\\s*'))), collapse = ' + ')
-#   })
+contrast_matrix <- contrast_matrix_expanded
+for (term in rev(colnames(design_matrix))) {
+  contrast_matrix <- contrast_matrix %>%
+    mutate(numerators = gsub(term, replacement = make.names(term), numerators, fixed = TRUE),
+           denominators = gsub(term, replacement = make.names(term), denominators, fixed = TRUE))
+}
 
 ## Then make contrasts
 contrast_matrix <- apply(contrast_matrix, MARGIN = 1, function(row) {
@@ -197,111 +167,356 @@ colnames(contrast_matrix) <- contrast_matrix_expanded$contrast_names
 contrast_matrix
 ```
 
-# Extract contrasts
+## Extract contrasts
 
-## DESeq
+### DESeq
 
 ```{r}
 model_results <- apply(contrast_matrix, 2, gencoreBulk::extractFilteredDESeqResults, dds = obj$dds)
 names(model_results) <- colnames(contrast_matrix)
 ```
 
-## EdgeR
+## Check results
 
 ```{r}
-## Re-orient the fitted model object from the coefficients of the original design matrix to the set of contrasts defined above in contr.matrix
-extracted_contrasts <- contrasts.fit(model_fit, contrasts = contrast_matrix)
-  ## Run empirical Bayes moderation; borrowing information across all the genes to obtain more precise estimates of gene-wise variability
-extracted_contrasts <- eBayes(extracted_contrasts, robust=TRUE)
-  ## Plot the model's residual variances against average expression values; demonstrating that the variance is no longer dependent on the mean expression level
-plotSA(extracted_contrasts, main="Final model: Mean-variance trend")
-  ## Identify which genes are significantly differentially expressed for each contrast from a fit object containing p-values and test statistics
-extracted_contrasts$sig <- decideTests(extracted_contrasts, lfc = 0)
+lapply(model_results, summary)
 ```
 
-```{r}
-createResTables <- function(obj) {
-  resultsTables <- list()
-  for (contrast in colnames(obj$contrasts)) {
-    resultsTables[[contrast]] <- topTable(obj, coef = contrast, n = Inf) %>%
-      # as_tibble(rownames = "gene") %>%
-      dplyr::rename(log2FoldChange = logFC, pvalue = P.Value, padj = adj.P.Val)
-  }
-  return(resultsTables)
-}
-
-# Arrange by cluster, then by contrast
-model_results <- createResTables(extracted_contrasts)
-
-# Put all the results in a single table
-model_results_joined <- lapply(resTables, function(one_tbl) {
-    one_tbl %>%
-    rownames_to_column(var = "gene")
-  }) %>% bind_rows(., .id = "contrast")
-```
-
-# Check results
-
-```{r}
-model_results[[1]] %>% head()
-```
-
-## Summary table
+### Summary table
 
 ```{r}
 ## Not very generalized yet
-tmp <- data.table::rbindlist(lapply(DESeq_results, function(x) {
+data.table::rbindlist(lapply(model_results, function(x) {
   up <- x %>% as.data.frame() %>% filter(log2FoldChange > 0) %>% filter(padj<0.05) %>% nrow()
   down <- x %>% as.data.frame() %>% filter(log2FoldChange < 0) %>% filter(padj<0.05) %>% nrow()
   return(list(up=up, down=down))
 }))
-
-tmp <- cbind(timepoint = c('D2', 'D4', 'D8', 'D14', 'D28'), tmp[1:5,], tmp[6:10,], tmp[11:15,])
-plots[['overall_table']] <- tmp %>%
-  knitr::kable(digits = 3) %>%
-  kableExtra::add_header_above(c('', 'Bolus' = 2, 'Escalating' = 2, 'Interaction' = 2))
-plots[['overall_table']]
 ```
 
-# Visualize coefficients (EdgeR, WIP)
+## Visualize 
 
 Plot expression boxplots for quick inspections
 
-```{r}
-plotGeneExpression('JUN',
-                   counts =  model_fit$EList$E,
-                   metadata = model_fit$targets,
-                   grouping = 'grp.day',
-                   subsetting = 'day',
-                   subsets = 'D00') 
+```{r, fig.height=10, fig.width=7}
+genes <- getTopNGenes(model_results$W18_v_pre.rb, exclude_ENS = TRUE, ENS_pattern = 'ENSMNEG')
+data_to_plot = assays(obj$dds)$rld[,assays(obj$dds)$rld$Tissue == 'rectal-biopsy']
+
+data_to_plot <- normalizeCountsForHeatmapByIndividual(assay(data_to_plot),
+                                   data_to_plot@colData,
+                                   group_var = 'Timepoint', baseline = '1', 
+                                   individual_var = 'Individual',
+                                   remove_baseline = TRUE)
+  
+heatmapFromGenelist(genes,
+                    data_to_plot)
 ```
 
-You can try to add coefficient terms too to see if they track with your expectations
+```{r}
+model_results$W18_v_pre.rb %>%
+  as.data.frame() %>%
+  filter(row.names(.) %in% genes)
+```
+
+# Design 2 - Separate tissues
 
 ```{r}
-plotGeneExpression(gene = 'JUN', 
-               counts = model_fit$EList$E,
-               metadata = model_fit$targets,
-               grouping = 'grp',
-               subsetting = 'day', subsets = 'D28') +
-   plotModelCoeffs(gene = 'JUN', expr = contrast_matrix_expanded[5,2] , coefficients = model_fit$coefficients)  
-## Or you can return the data for manual plotting
-arrow_coords <- plotModelCoeffs(gene = 'JUN', expr = contrast_matrix_expanded[5,2] , coefficients = model_fit$coefficients, data_only = TRUE)  
-## Can edit values here if desired, such as X coordinates
-## arrow_coords$x = 0.5
+design_formula <- as.formula('~ Timepoint + Individual')
+design_matrix  <- stats::model.matrix(design_formula, data = metadata)
+colnames(design_matrix)
+```
 
-plotGeneExpression(gene = 'JUN', 
-               counts = model_fit$EList$E,
-               metadata = model_fit$targets,
-               grouping = 'grp',
-               subsetting = 'day', subsets = 'D28') +
-  ## Then manually create the arrows
-   ggplot2::geom_segment(data = arrow_coords, 
-                        aes(x = x,
-                            xend = x,
-                            y = y, 
-                            yend = yend,
-                            color = terms),
-                        arrow = ggplot2::arrow()) 
+```{r}
+design_matrix
+```
+
+## Fit design
+
+```{r}
+obj.rb <- obj$dds[,obj$dds$Tissue=='rectal-biopsy']
+obj.pbmc <- obj$dds[,obj$dds$Tissue=='PBMC']
+
+design(obj.rb) <- design_formula
+stopifnot(colnames(obj.rb) == rownames(obj.rb@colData))
+obj.rb <- DESeq2::DESeq(obj.rb)
+
+design(obj.pbmc) <- design_formula
+stopifnot(colnames(obj.pbmc) == rownames(obj.pbmc@colData))
+obj.pbmc <- DESeq2::DESeq(obj.pbmc)
+```
+
+
+## Define contrasts
+
+Explicitly write out full contrast formulas, including terms that will cancel and
+expanded interaction terms.
+This avoids mistakes and facilitates plotting.
+
+You do not have to use valid R names at this stage, as that will be corrected
+for later. Just use the colnames of the design matrix.
+
+```{r}
+colnames(design_matrix)
+```
+
+Use spaces around terms to make sure they are detected by term extraction
+functions for plotting (WIP)
+
+```{r}
+contrast_matrix_expanded <- data.frame(
+  contrast_names = c(
+    'W12_v_pre',
+    'W18_v_pre',
+    'W18_v_W12'
+  ),
+  numerators = c(
+   '(Intercept) + TimepointW12',
+   '(Intercept) + TimepointW18',
+   '(Intercept) + TimepointW18'
+  ),
+  denominators = c(
+   '(Intercept)',
+   '(Intercept)',
+   '(Intercept) + TimepointW12'
+  )
+)
+```
+
+
+```{r}
+contrast_matrix <- contrast_matrix_expanded
+for (term in rev(colnames(design_matrix))) {
+  contrast_matrix <- contrast_matrix %>%
+    mutate(numerators = gsub(term, replacement = make.names(term), numerators, fixed = TRUE),
+           denominators = gsub(term, replacement = make.names(term), denominators, fixed = TRUE))
+}
+
+## Then make contrasts
+contrast_matrix <- apply(contrast_matrix, MARGIN = 1, function(row) {
+  paste0('(', row[2], ') - (', row[3], ')')
+})
+contrast_matrix <- limma::makeContrasts(contrasts = contrast_matrix,
+    levels = make.names(colnames(design_matrix)))
+colnames(contrast_matrix) <- contrast_matrix_expanded$contrast_names
+contrast_matrix
+```
+
+## Extract contrasts
+
+### DESeq
+
+```{r}
+model_results.rb <- apply(contrast_matrix, 2, gencoreBulk::extractFilteredDESeqResults, dds = obj.rb)
+names(model_results.rb) <- colnames(contrast_matrix)
+
+model_results.pbmc <- apply(contrast_matrix, 2, gencoreBulk::extractFilteredDESeqResults, dds = obj.pbmc)
+names(model_results.pbmc) <- colnames(contrast_matrix)
+```
+
+## Check results
+
+```{r}
+lapply(model_results.rb, summary)
+lapply(model_results.pbmc, summary)
+```
+
+### Summary table
+
+```{r}
+## Not very generalized yet
+data.table::rbindlist(lapply(model_results, function(x) {
+  up <- x %>% as.data.frame() %>% filter(log2FoldChange > 0) %>% filter(padj<0.05) %>% nrow()
+  down <- x %>% as.data.frame() %>% filter(log2FoldChange < 0) %>% filter(padj<0.05) %>% nrow()
+  return(list(up=up, down=down))
+}))
+```
+
+## Visualize 
+
+Plot expression boxplots for quick inspections
+
+```{r, fig.height=10, fig.width=7}
+genes <- getTopNGenes(model_results.rb$W12_v_pre, 
+                      exclude_ENS = TRUE, ENS_pattern = 'ENSMNEG')
+data_to_plot <- normalizeCountsForHeatmapByIndividual(assay(assays(obj.rb)$rld),
+                                   obj.rb@colData,
+                                   group_var = 'Timepoint', baseline = 'pre', 
+                                   individual_var = 'Individual',
+                                   remove_baseline = TRUE)
+  
+heatmapFromGenelist(genes,
+                    data_to_plot)
+```
+
+# Compare approaches
+
+```{r}
+model_results.rb$W12_v_pre %>%
+  as.data.frame() %>%
+  rownames_to_column('gene') %>%
+  filter(gene %in% genes)
+```
+
+```{r}
+tmp <- data.table::rbindlist(lapply(model_results.rb, function(x) {
+  up <- x %>% as.data.frame() %>% filter(log2FoldChange > 0) %>% filter(padj<0.05) %>% nrow()
+  down <- x %>% as.data.frame() %>% filter(log2FoldChange < 0) %>% filter(padj<0.05) %>% nrow()
+  return(list(up=up, down=down))
+}))
+tmp$contrast <- paste0(names(model_results.rb), '.rb')
+
+tmp1 <- data.table::rbindlist(lapply(model_results.pbmc, function(x) {
+  up <- x %>% as.data.frame() %>% filter(log2FoldChange > 0) %>% filter(padj<0.05) %>% nrow()
+  down <- x %>% as.data.frame() %>% filter(log2FoldChange < 0) %>% filter(padj<0.05) %>% nrow()
+  return(list(up=up, down=down))
+}))
+tmp1$contrast <- paste0(names(model_results.pbmc), '.pbmc')
+
+tmp1 <- rbind(tmp, tmp1)
+
+tmp <- data.table::rbindlist(lapply(model_results, function(x) {
+  up <- x %>% as.data.frame() %>% filter(log2FoldChange > 0) %>% filter(padj<0.05) %>% nrow()
+  down <- x %>% as.data.frame() %>% filter(log2FoldChange < 0) %>% filter(padj<0.05) %>% nrow()
+  return(list(up=up, down=down))
+}))
+tmp$contrast <- names(model_results)
+
+model_comp_table <- merge(tmp1, tmp, by='contrast', suffixes=c('.separate', '.joined'), all=TRUE) %>%
+  select(up.separate, down.separate, contrast, up.joined, down.joined) %>%
+  mutate(contrast=factor(contrast, levels = c(
+    "W12_v_pre.pbmc", "W12_v_pre.rb", "W12_v_pre.allTissue", 
+    "W18_v_pre.pbmc", "W18_v_pre.rb", "W18_v_pre.allTissue",
+    "W18_v_W12.pbmc", "W18_v_W12.rb", "W18_v_W12.allTissue", 
+    "rb_v_pbmc.W12", "rb_v_pbmc.W18" 
+  ))) %>%
+  arrange(contrast)
+
+model_comp_table <- kable(model_comp_table, col.names = c('Up', 'Down', 'Contrast', 'Up', 'Down'),
+             align = 'c') %>%
+  kable_classic() %>%
+  add_header_above(c("Separate" = 2, " " = 1,  "Joined" = 2)) %>%
+  kable_styling("striped")
+model_comp_table
+```
+
+
+```{r}
+tmp <- data.table::rbindlist(lapply(model_results.rb, function(x) {
+  up <- x %>% as.data.frame() %>% filter(log2FoldChange > 0) %>% filter(padj<0.05) %>% nrow()
+  down <- x %>% as.data.frame() %>% filter(log2FoldChange < 0) %>% filter(padj<0.05) %>% nrow()
+  return(list(up=up, down=down))
+}))
+tmp$contrast <- names(model_results.rb)
+
+tmp1 <- data.table::rbindlist(lapply(model_results.pbmc, function(x) {
+  up <- x %>% as.data.frame() %>% filter(log2FoldChange > 0) %>% filter(padj<0.05) %>% nrow()
+  down <- x %>% as.data.frame() %>% filter(log2FoldChange < 0) %>% filter(padj<0.05) %>% nrow()
+  return(list(up=up, down=down))
+}))
+tmp1$contrast <- names(model_results.pbmc)
+
+model_summary_table <- merge(tmp, tmp1, by = 'contrast', suffixes = c('.rb', '.pbmc')) %>%
+  select(up.rb, down.rb, contrast, up.pbmc, down.pbmc) %>%
+  mutate(contrast=factor(contrast, levels = c(
+    "W12_v_pre",
+    "W18_v_pre",
+    "W18_v_W12"
+  ))) %>%
+  arrange(contrast)
+
+model_summary_table <- kable(model_summary_table, 
+                             col.names = c('Up', 'Down', 'Contrast', 'Up', 'Down'),
+                             align = 'c') %>%
+  kable_classic() %>%
+  add_header_above(c("Rectal biopsy" = 2, " " = 1,  "PBMC" = 2)) %>%
+  kable_styling("striped")
+model_summary_table
+```
+
+# Case study
+
+```{r}
+tmp <- unlist(lapply(model_results.pbmc, function(x) {
+  as.data.frame(x) %>% 
+    rownames_to_column('gene') %>%
+    filter(padj < 0.05) %>%
+    select(gene)
+}))
+tmp <- table(tmp)
+tmp[tmp==1]
+```
+
+
+```{r}
+genes <- c('CD19', 'CD22', 'FCRL2', 'CHIT1', 'TCN2')
+data_to_plot <- normalizeCountsForHeatmapByIndividual(assay(assays(obj.pbmc)$rld),
+                                   obj.pbmc@colData,
+                                   group_var = 'Timepoint', baseline = 'pre', 
+                                   individual_var = 'Individual',
+                                   remove_baseline = TRUE)
+casestudy_heatmap_pbmc <- heatmapFromGenelist(genes, data_to_plot,
+                    column_split = c(rep(1,5), rep(2,5)), 
+                    slice_labels = c('W12', 'W18'), 
+                    slice_labels_rot = 0, 
+                    column_labels = gsub('.+(Z[0-9]+).+', '\\1',
+                                         colnames(data_to_plot)))
+casestudy_heatmap_pbmc
+```
+
+```{r}
+casestudy_table <- merge(
+  as.data.frame(model_results.pbmc$W12_v_pre) %>%
+    rownames_to_column('gene') %>%
+    filter(gene %in% genes) %>%
+    select(gene, log2FoldChange, lfcSE, padj),
+  as.data.frame(model_results.pbmc$W18_v_pre) %>%
+    rownames_to_column('gene') %>%
+    filter(gene %in% genes) %>%
+  select(gene, log2FoldChange, lfcSE, padj),
+  by = 'gene', suffixes = c('.W12', '.W18')
+)
+
+casestudy_table <- merge(
+  casestudy_table, 
+  as.data.frame(model_results.pbmc$W18_v_W12) %>%
+    rownames_to_column('gene') %>%
+    filter(gene %in% genes) %>%
+  select(gene, log2FoldChange, lfcSE, padj),
+  by = 'gene', suffixes = c('', '.W18vW12')
+) %>%
+  mutate(gene = factor(gene, levels = genes)) %>%
+  arrange(gene)
+
+casestudy_table <- data.frame(lapply(casestudy_table, function(y) if(is.numeric(y)) round(y, 3) else y)) 
+
+casestudy_table <- kable(casestudy_table, 
+                             col.names = c('Gene',rep(c('LFC', 'LFC SE', 'adj. P') ,3)),
+                             align = 'c',
+                         caption = 'LFC = log2 fold change; SE = standard error; adj. P = adjusted P value') %>%
+  kable_classic() %>%
+  add_header_above(c(" " = 1, "W12" = 3, "W18" = 3, "W18_v_W12" =3 )) %>%
+  kable_styling("striped") %>%
+  column_spec (c(2,5,8),border_left = T, border_right = F) 
+casestudy_table
+```
+
+# Render
+
+```{r}
+rmarkdown::render(here::here('scripts/model_validation.format.Rmd'),
+                  output_file = 'model_validation.html',
+                  output_dir = here::here('reports'),
+                  params = list(
+                    title = 'Bulk RNA Analysis Report')
+                  )
+```
+
+# Save model
+
+```{r}
+saveRDS(obj.pbmc, here('rds/PBMC/pbmc_obj-post_model_fit.Rds'))
+saveRDS(obj.rb, here('rds/RB/rb_obj-post_model_fit.Rds'))
+
+saveRDS(model_results.pbmc, here('rds/PBMC/PBMC-extracted_model_fits.Rds'))
+saveRDS(model_results.rb, here('rds/RB/RB-extracted_model_fits.Rds'))
 ```
 
