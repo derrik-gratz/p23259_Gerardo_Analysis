@@ -1,8 +1,9 @@
-Sequencing data was aligned to Mmul10 Ensembl release 100 using STAR 2.7.3a [1]. 
+Sequencing data was aligned to macaca nemestrina Ensembl release 95 using STAR 2.7.9a [1]. 
 Transcript abundance estimates were calculated using the STAR '--quantMode GeneCounts'
 option. DESeq2 was used for transcript normalization and differential expression
 analysis [2]. Gene set enrichment analysis was performed using the fGSEA R package [3]
-with pathway definition defined in the Hallmark collection of MSigDB [4, 5].
+with pathway definitions defined in the Hallmark collection of MSigDB [4, 5] as well as 
+the C2 cannonical pathways set.
 
 1.  Dobin, A., et al., STAR: ultrafast universal RNA-seq aligner. Bioinformatics, 2013. 29(1): p. 15-21.
 2.	Love, M.I., W. Huber, and S. Anders, Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biol, 2014. 15(12): p. 550.
