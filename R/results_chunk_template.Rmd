@@ -29,7 +29,13 @@ generateVolcanoPlot(result)
 generateDGEDatatable(result)
 ```
 
-```{r, fig.height=8}
+:::: {class='fluid-row'}
+
+::: {class='col-md-6'}
+
+Log2 fold change from individual's pre-treatment expression
+
+```{r, fig.height=6.2}
 geneList <- getTopNGenes(result)
 data_to_plot <- assays(obj)$rld
 data_to_plot <- normalizeCountsForHeatmapByIndividual(
@@ -46,5 +52,33 @@ heatmapFromGenelist(geneList = geneList,
                     slice_labels_rot = 0,
                     column_labels = gsub('.+(Z[0-9]+).+','\\1', colnames(data_to_plot)))
 ```
+
+:::
+
+::: {class='col-md-6'}
+
+Log2 fold change from median pre-treatment expression
+
+```{r, fig.height=6.2}
+geneList <- getTopNGenes(result)
+data_to_plot <- assays(obj)$rld
+data_to_plot <- normalizeCountsForHeatmap(
+  assay(data_to_plot),
+  data_to_plot@colData,
+  group_var = 'Timepoint', baseline = '1', 
+  # individual_var = 'Individual',
+  remove_baseline = FALSE)
+
+heatmapFromGenelist(geneList = geneList, 
+                    data = data_to_plot,
+                    column_split = c(rep(1,5), rep(2,5), rep(3,5)),
+                    slice_labels = c('W0', 'W12', 'W18'),
+                    slice_labels_rot = 0,
+                    column_labels = gsub('.+(Z[0-9]+).+','\\1', colnames(data_to_plot)))
+```
+
+:::
+
+::::
 
 ***
