@@ -29,7 +29,19 @@ Each tab has results from a specific comparison within the study. Each tab shows
 
 3. A table of all significant DGE
 
+4. Heatmaps of the top DGE
+
 The order of terms in tab labeling informs how to interpret results. For log-fold change and enrichment, the first listed group is the numerator and the second is the denominator. So in a comparison of X vs Y, a positive log-fold change means the gene is more highly expressed in X, while a negative change means the gene is more highly expressed in Y. 
+
+The heatmaps are shown in 2 styles. The first has each individual's data normalized
+to it's pre-treatment value. If the log-transformed expression values for
+timepoints 0, 12, and 18 were 5, 9, and 15, the heatmap would should show
+expression of 4 and 10 for weeks 12 and 18. This approach is better for observing 
+the group level change, as the stats are normalized per individual baseline.
+The second heatmap shows data normalized for the median pre-treatment expression.
+While the group-level trends can be more obscured this way (some individuals 
+may be 'flipped'), it can be useful to see the variance at the baseline.
+
 
 ## PBMC {.tabset}
 
@@ -69,6 +81,12 @@ These heatmaps show the relative expression (regularized and log2 transformed) o
 
 ### PBMC
 
+:::: {class='fluid-row'}
+
+::: {class='col-md-6'}
+
+Log2 fold change from individual's pre-treatment expression
+
 ```{r, fig.height=4}
 geneList <- unique(unlist(lapply(model_results.pbmc, getTopNGenes, N=10, direction='equal')))
 
@@ -87,9 +105,43 @@ heatmapFromGenelist(geneList = geneList,
                     column_labels = gsub('.+(Z[0-9]+).+','\\1', colnames(data_to_plot)))
 ```
 
+:::
+
+::: {class='col-md-6'}
+
+Log2 fold change from median pre-treatment expression
+
+```{r, fig.height=4}
+geneList <- unique(unlist(lapply(model_results.pbmc, getTopNGenes, N=10, direction='equal')))
+
+data_to_plot <- assays(obj.pbmc)$rld
+data_to_plot <- normalizeCountsForHeatmap(
+  assay(data_to_plot),
+  data_to_plot@colData,
+  group_var = 'Timepoint', baseline = '1', 
+  remove_baseline = FALSE)
+
+heatmapFromGenelist(geneList = geneList, 
+                    data = data_to_plot,
+                    column_split = c(rep(1,5), rep(2,5), rep(3,5)),
+                    slice_labels = c('W0', 'W12', 'W18'),
+                    slice_labels_rot = 0,
+                    column_labels = gsub('.+(Z[0-9]+).+','\\1', colnames(data_to_plot)))
+```
+
+:::
+
+::::
+
 ***
 
 ### RB
+
+:::: {class='fluid-row'}
+
+::: {class='col-md-6'}
+
+Log2 fold change from individual's pre-treatment expression
 
 ```{r, fig.height=4}
 geneList <- unique(unlist(lapply(model_results.rb, getTopNGenes, N=10, direction='equal')))
@@ -109,6 +161,35 @@ heatmapFromGenelist(geneList = geneList,
                     column_labels = gsub('.+(Z[0-9]+).+','\\1', colnames(data_to_plot)))
 ```
 
+:::
+
+::: {class='col-md-6'}
+
+Log2 fold change from median pre-treatment expression
+
+```{r, fig.height=4}
+geneList <- unique(unlist(lapply(model_results.rb, getTopNGenes, N=10, direction='equal')))
+
+data_to_plot <- assays(obj.rb)$rld
+data_to_plot <- normalizeCountsForHeatmap(
+  assay(data_to_plot),
+  data_to_plot@colData,
+  group_var = 'Timepoint', baseline = '1', 
+  # individual_var = 'Individual',
+  remove_baseline = FALSE)
+
+heatmapFromGenelist(geneList = geneList, 
+                    data = data_to_plot,
+                    column_split = c(rep(1,5), rep(2,5), rep(3,5)),
+                    slice_labels = c('W0', 'W12', 'W18'),
+                    slice_labels_rot = 0,
+                    column_labels = gsub('.+(Z[0-9]+).+','\\1', colnames(data_to_plot)))
+```
+
+:::
+
+::::
+
 ***
 
 # GSEA {.tabset}
@@ -124,9 +205,15 @@ also an example of a joint GSEA plot which shows multiple pathways over all comp
 A few example pathways are selected. These are meant to be exploratory/examples. 
 We can re-generate these plots for specific pathways you want to see. 
 
-## PBMC
+## PBMC {.unlisted}
 
-### Individual {.tabset}
+### Joint contrasts
+
+```{r}
+gseaDotplot_joint(joint_GSEA_results_pbmc)
+```
+
+### Individual contrasts {.tabset}
 
 ```{r}
 chunktext <- "
@@ -146,16 +233,16 @@ for (i in names(model_results.pbmc)) {
 
 cat(knit_child(text = out, quiet = TRUE), sep = '\n')
 ```
+## RB {.unlisted}
 
-### Joint
+### Joint contrasts
 
 ```{r}
-gseaDotplot_joint(joint_GSEA_results_pbmc)
+gseaDotplot_joint(joint_GSEA_results_rb)
 ```
 
-## RB
 
-### Individual {.tabset}
+### Individual contrasts {.tabset}
 
 ```{r}
 chunktext <- "
@@ -174,10 +261,4 @@ for (i in names(model_results.rb)) {
 }
 
 cat(knit_child(text = out, quiet = TRUE), sep = '\n')
-```
-
-### Joint
-
-```{r}
-gseaDotplot_joint(joint_GSEA_results_rb)
 ```
