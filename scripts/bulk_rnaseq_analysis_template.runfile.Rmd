@@ -48,6 +48,7 @@ library(msigdbr)      ## Loads pathway genesets from MsigDB
 #remotes::install_github('yerkes-gencore/gencoreBulk')
 library(gencoreBulk)  ## See the git repo for instructions on using this
 
+set.seed(44)
 
 ## sometimes they conflict with other loaded packages
 # counts <- DESeq2::counts
@@ -185,7 +186,7 @@ m_t2g_kegg <- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "
 m_t2g_h <- msigdbr(species = "Homo sapiens", category = "H") %>% 
   dplyr::select(gene_symbol, gs_name)
 gmt.file <- unstack(bind_rows(m_t2g_reactome,m_t2g_h,m_t2g_biocarta,m_t2g_kegg))
-
+# gmt.file <- unstack(m_t2g_reactome)
 ## Manually specify gmt.files
 ##gmt.file <- append(gmt.file, gmtPathways(file.path(a)))
 ```
@@ -238,8 +239,8 @@ writeDESeqResults(model_results.rb,
 ```
 
 ```{r}
-writefGSEAResults(gsea_results_pbmc, output_name = 'PBMC_GSEA.xlsx', outdir = here('outputs/PBMC'))
-writefGSEAResults(gsea_results_rb, output_name = 'RB_GSEA.xlsx', outdir = here('outputs/RB'))
+writefGSEAResults(gsea_results_pbmc, output_name = 'REACTOME_PBMC_GSEA.xlsx', outdir = here('outputs/PBMC'))
+writefGSEAResults(gsea_results_rb, output_name = 'REACTOME_RB_GSEA.xlsx', outdir = here('outputs/RB'))
 ```
 
 # Render outfile
