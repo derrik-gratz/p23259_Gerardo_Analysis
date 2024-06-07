@@ -1,0 +1,800 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = TRUE,
+                      message = TRUE, 
+                      echo=FALSE, 
+                      fig.width = 8, 
+                      fig.height = 4)
+
+library(ComplexHeatmap)
+library(gtools)
+library(RColorBrewer)
+library(tidyverse)    ## General logic and processing
+library(yaml)         ## Parse config
+library(DESeq2)       ## Makes us have a job
+library(DT)           ## Interactive tables
+library(openxlsx)     ## Writing count table outputs
+library(here)         ## For consistent directory structures
+library(plyr)
+library(dplyr) ## loading after to overwrite groupby and summarize from plyr
+library(msigdbr)      ## Loads pathway genesets from MsigDB
+library(dplyr)
+
+#remotes::install_github('yerkes-gencore/gencoreBulk')
+library(gencoreBulk)  ## See the git repo for instructions on using this
+
+
+## sometimes they conflict with other loaded packages
+counts <- DESeq2::counts
+here <- here::here
+```
+
+# Load data
+
+```{r}
+obj.pbmc <- readRDS(here('rds/PBMC/pbmc_obj-post_model_fit.Rds'))
+obj.rb <- readRDS(here('rds/RB/rb_obj-post_model_fit.Rds'))
+
+model_results.pbmc <- readRDS(here('rds/PBMC/PBMC-extracted_model_fits.Rds'))
+model_results.rb <- readRDS(here('rds/RB/RB-extracted_model_fits.Rds'))
+
+analysis_config <- read_yaml(here('config/analysis_config.yml'))
+```
+
+```{r}
+plot_obj.pbmc <- assays(obj.pbmc)$rld
+plot_obj.pbmc <- plot_obj.pbmc[,(colData(plot_obj.pbmc) %>% 
+                               as.data.frame() %>% 
+                               arrange(Timepoint, Individual))$FileID]
+
+plot_obj.rb <- assays(obj.rb)$rld
+plot_obj.rb <- plot_obj.rb[,(colData(plot_obj.rb) %>% 
+                               as.data.frame() %>% 
+                               arrange(Timepoint, Individual))$FileID]
+```
+
+```{r}
+dge_results.rb <- read_excel_allsheets(here('outputs/RB/RB_DGE.xlsx'), rowNames=TRUE)
+gsea_results.rb.reactome <- read_excel_allsheets(here('outputs/RB/REACTOME_RB_GSEA.xlsx'))
+gsea_results.rb.hallmark <- read_excel_allsheets(here('outputs/RB/HALLMARK_RB_GSEA.xlsx'))
+gsea_results.rb.kegg <- read_excel_allsheets(here('outputs/RB/KEGG_RB_GSEA.xlsx'))
+
+dge_results.pbmc <- read_excel_allsheets(here('outputs/PBMC/PBMC_DGE.xlsx'), rowNames=TRUE)
+gsea_results.pbmc.reactome <- read_excel_allsheets(here('outputs/PBMC/REACTOME_PBMC_GSEA.xlsx'))
+gsea_results.pbmc.hallmark <- read_excel_allsheets(here('outputs/PBMC/HALLMARK_PBMC_GSEA.xlsx'))
+gsea_results.pbmc.kegg <- read_excel_allsheets(here('outputs/PBMC/KEGG_PBMC_GSEA.xlsx'))
+```
+
+# GSEA dotplots
+
+```{r}
+gmt.file <- list()
+m_t2g_reactome <- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:REACTOME") %>% 
+  dplyr::select(gene_symbol, gs_name)
+m_t2g_biocarta <- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:BIOCARTA") %>% 
+  dplyr::select(gene_symbol, gs_name)
+m_t2g_kegg <- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:KEGG") %>% 
+  dplyr::select(gene_symbol, gs_name)
+m_t2g_h <- msigdbr(species = "Homo sapiens", category = "H") %>% 
+  dplyr::select(gene_symbol, gs_name)
+gmt.file <- unstack(bind_rows(m_t2g_reactome,m_t2g_h,m_t2g_biocarta,m_t2g_kegg))
+gsea_plots <- list()
+```
+
+```{r, eval=FALSE}
+## write file for sammi
+fnlist <- function(x, fil){ z <- deparse(substitute(x))
+                         cat(z, "\n", file=fil)
+                         nams=names(x) 
+                   for (i in seq_along(x) ){ cat(nams[i], "\t",  x[[i]], "\n", 
+                                            file=fil, append=TRUE) }
+                         }
+ fnlist(gmt.file, "test")
+```
+
+
+## Functions
+
+```{r}
+combine_GSEA_results <- function(gsea_results,
+                                 pathways){
+  gsea_results <- lapply(gsea_results, function(x){x %>% filter(pathway %in% pathways)})
+  gsea_results <- data.table::rbindlist(gsea_results, idcol='ID')
+}
+```
+
+```{r}
+library(scales)
+reverselog_trans <- function(base = exp(1)) {
+    trans <- function(x) -log(x, base)
+    inv <- function(x) base^(-x)
+    trans_new(paste0("reverselog-", format(base)), trans, inv, 
+              log_breaks(base = base), 
+              domain = c(1e-100, Inf))
+}
+```
+
+## PBMC
+
+```{r}
+pbmc_pathways <- list()
+pbmc_pathways[['Hallmark']] <- c(
+  'HALLMARK_INTERFERON_GAMMA_RESPONSE',
+  'HALLMARK_TNFA_SIGNALING_VIA_NFKB',
+  'HALLMARK_INFLAMMATORY_RESPONSE',
+  'HALLMARK_INTERFERON_ALPHA_RESPONSE',
+  'HALLMARK_IL6_JAK_STAT3_SIGNALING',
+  'HALLMARK_IL2_STAT5_SIGNALING',
+  'HALLMARK_APOPTOSIS'
+)
+pbmc_pathways[['Reactome']] <- c(
+  'REACTOME_DISEASES_OF_IMMUNE_SYSTEM',
+  'REACTOME_INTERFERON_SIGNALING',
+  'REACTOME_INTERFERON_GAMMA_SIGNALING',
+  'REACTOME_INTERFERON_ALPHA_BETA_SIGNALING',
+  'REACTOME_TOLL_LIKE_RECEPTOR_CASCADES',
+  'REACTOME_SIGNALING_BY_INTERLEUKINS',
+  'REACTOME_SIGNALING_BY_THE_B_CELL_RECEPTOR_BCR',
+  'REACTOME_TOLL_LIKE_RECEPTOR_TLR1_TLR2_CASCADE',
+  'REACTOME_MYD88_INDEPENDENT_TLR4_CASCADE',
+  'REACTOME_TOLL_LIKE_RECEPTOR_9_TLR9_CASCADE',
+  'REACTOME_INTERLEUKIN_17_SIGNALING',
+  'REACTOME_INTERLEUKIN_3_INTERLEUKIN_5_AND_GM_CSF_SIGNALING',
+  'REACTOME_INTERLEUKIN_15_SIGNALING',
+  'REACTOME_INTERLEUKIN_2_FAMILY_SIGNALING',
+  'REACTOME_INTERLEUKIN_20_FAMILY_SIGNALING',
+  'REACTOME_PROGRAMMED_CELL_DEATH',
+  'REACTOME_APOPTOSIS'
+)
+pbmc_pathways[['KEGG']] <- c(
+  'KEGG_PRIMARY_IMMUNODEFICIENCY',
+  'KEGG_TOLL_LIKE_RECEPTOR_SIGNALING_PATHWAY',
+  'KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY',
+  'KEGG_T_CELL_RECEPTOR_SIGNALING_PATHWAY',
+  'KEGG_NATURAL_KILLER_CELL_MEDIATED_CYTOTOXICITY',
+  'KEGG_JAK_STAT_SIGNALING_PATHWAY'
+)
+```
+
+### 12 v pre
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-12_reactome']] <- 
+  gseaDotplot_single(gsea_results.pbmc.reactome$W12_v_pre %>% 
+                       filter(pathway %in% pbmc_pathways$Reactome), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+gsea_plots[['PBMC_ind_pre-v-12_reactome']] 
+```
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-12_kegg']] <- 
+  gseaDotplot_single(gsea_results.pbmc.kegg$W12_v_pre %>% 
+                       filter(pathway %in% pbmc_pathways$KEGG), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-12_hallmark']] <- 
+  gseaDotplot_single(gsea_results.pbmc.hallmark$W12_v_pre %>% 
+                       filter(pathway %in% pbmc_pathways$Hallmark), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+### 18 v pre
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-18_reactome']] <- 
+  gseaDotplot_single(gsea_results.pbmc.reactome$W18_v_pre %>% 
+                       filter(pathway %in% pbmc_pathways$Reactome), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-18_kegg']] <- 
+  gseaDotplot_single(gsea_results.pbmc.kegg$W18_v_pre %>% 
+                       filter(pathway %in% pbmc_pathways$KEGG), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-18_hallmark']] <- 
+  gseaDotplot_single(gsea_results.pbmc.hallmark$W18_v_pre %>% 
+                       filter(pathway %in% pbmc_pathways$Hallmark), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+### 18 v 12
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_18-v-12_reactome']] <- 
+  gseaDotplot_single(gsea_results.pbmc.reactome$W18_v_W12 %>% 
+                       filter(pathway %in% pbmc_pathways$Reactome), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+gsea_plots[['PBMC_ind_18-v-12_reactome']]
+```
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_18-v-12_kegg']] <- 
+  gseaDotplot_single(gsea_results.pbmc.kegg$W18_v_W12 %>% 
+                       filter(pathway %in% pbmc_pathways$KEGG), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+```{r, fig.height=6}
+gsea_plots[['PBMC_ind_18-v-12_hallmark']] <- 
+  gseaDotplot_single(gsea_results.pbmc.hallmark$W18_v_W12 %>% 
+                       filter(pathway %in% pbmc_pathways$Hallmark), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+gsea_plots[['PBMC_ind_18-v-12_hallmark']] 
+```
+
+### Joint
+
+```{r, fig.height=8}
+gsea_results.pbmc.reactome.joint <- combine_GSEA_results(gsea_results.pbmc.reactome, pbmc_pathways$Reactome)
+gsea_plots[['PBMC_joint_reactome']] <- gseaDotplot_joint(gsea_results.pbmc.reactome.joint, p_val_col = 'padj')
+gsea_plots[['PBMC_joint_reactome']]
+```
+
+```{r, fig.height=8}
+gsea_results.pbmc.hallmark.joint <- combine_GSEA_results(gsea_results.pbmc.hallmark, pbmc_pathways$Hallmark)
+gsea_plots[['PBMC_joint_hallmark']] <- gseaDotplot_joint(gsea_results.pbmc.hallmark.joint, p_val_col = 'padj')
+gsea_plots[['PBMC_joint_hallmark']]
+```
+
+```{r, fig.height=8}
+gsea_results.pbmc.kegg.joint <- combine_GSEA_results(gsea_results.pbmc.kegg, pbmc_pathways$KEGG)
+gsea_plots[['PBMC_joint_kegg']] <- gseaDotplot_joint(gsea_results.pbmc.kegg.joint, p_val_col = 'padj')
+gsea_plots[['PBMC_joint_kegg']]
+```
+
+## RB
+
+```{r}
+rb_pathways <- list()
+rb_pathways[['Hallmark']] <- c(
+  'HALLMARK_INFLAMMATORY_RESPONSE',
+  'HALLMARK_INTERFERON_ALPHA_RESPONSE',
+  'HALLMARK_INTERFERON_GAMMA_RESPONSE',
+  'HALLMARK_IL2_STAT5_SIGNALING',
+  'HALLMARK_IL6_JAK_STAT3_SIGNALING',
+  'HALLMARK_APOPTOSIS'
+)
+
+rb_pathways[['Reactome']] <- c(
+  'REACTOME_PROGRAMMED_CELL_DEATH',
+  'REACTOME_APOPTOSIS',
+  'REACTOME_PYROPTOSIS',
+  'REACTOME_TCR_SIGNALING',
+  'REACTOME_INTERFERON_SIGNALING',
+  'REACTOME_SIGNALING_BY_INTERLEUKINS',
+  'REACTOME_INTERFERON_ALPHA_BETA_SIGNALING',
+  'REACTOME_DOWNSTREAM_SIGNALING_EVENTS_OF_B_CELL_RECEPTOR_BCR',
+  'REACTOME_INTERLEUKIN_4_AND_INTERLEUKIN_13_SIGNALING',
+  'REACTOME_INTERFERON_GAMMA_SIGNALING',
+  'REACTOME_INTERLEUKIN_1_SIGNALING',
+  'REACTOME_INTERLEUKIN_1_FAMILY_SIGNALING',
+  'REACTOME_INTERLEUKIN_12_FAMILY_SIGNALING',
+  'REACTOME_INTERLEUKIN_12_SIGNALING',
+  'REACTOME_INTRINSIC_PATHWAY_FOR_APOPTOSIS',
+  'REACTOME_INTERLEUKIN_10_SIGNALING'
+)
+
+rb_pathways[['Kegg']] <- c(
+  'KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION'
+)
+```
+
+### 12 v pre
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-12_reactome']] <- 
+  gseaDotplot_single(gsea_results.rb.reactome$W12_v_pre %>% 
+                       filter(pathway %in% rb_pathways$Reactome), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+gsea_plots[['RB_ind_pre-v-12_reactome']] 
+```
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-12_kegg']] <- 
+  gseaDotplot_single(gsea_results.rb.kegg$W12_v_pre %>% 
+                       filter(pathway %in% rb_pathways$Kegg), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-12_hallmark&kegg']] <- 
+  gseaDotplot_single(rbind(gsea_results.rb.hallmark$W12_v_pre,
+                       gsea_results.rb.kegg$W12_v_pre) %>% 
+                       filter(pathway %in% c(rb_pathways$Kegg, rb_pathways$Hallmark)), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = FALSE)
+gsea_plots[['RB_ind_pre-v-12_hallmark&kegg']]
+```
+
+### 18 v pre
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-18_reactome']] <- 
+  gseaDotplot_single(gsea_results.rb.reactome$W18_v_pre %>% 
+                       filter(pathway %in% rb_pathways$Reactome), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-18_hallmark&kegg']] <- 
+  gseaDotplot_single(rbind(gsea_results.rb.hallmark$W18_v_pre,
+                       gsea_results.rb.kegg$W18_v_pre) %>% 
+                       filter(pathway %in% c(rb_pathways$Kegg, rb_pathways$Hallmark)), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = FALSE)
+gsea_plots[['RB_ind_pre-v-18_hallmark&kegg']]
+```
+
+### 18 v 12
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_18-v-12_reactome']] <- 
+  gseaDotplot_single(gsea_results.rb.reactome$W18_v_W12 %>% 
+                       filter(pathway %in% rb_pathways$Reactome), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = TRUE)
+```
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_18-v-12_hallmark&kegg']] <- 
+  gseaDotplot_single(rbind(gsea_results.rb.hallmark$W18_v_W12,
+                       gsea_results.rb.kegg$W18_v_W12) %>% 
+                       filter(pathway %in% c(rb_pathways$Kegg, rb_pathways$Hallmark)), 
+                     signif_only = FALSE, p_val_col = 'padj', use_shortened_pathway_names = FALSE)
+gsea_plots[['RB_ind_18-v-12_hallmark&kegg']]
+```
+
+
+### Joint
+
+```{r, fig.height=8}
+gsea_results.rb.reactome.joint <- combine_GSEA_results(gsea_results.rb.reactome, rb_pathways$Reactome)
+gsea_plots[['RB_joint_reactome']] <- gseaDotplot_joint(gsea_results.rb.reactome.joint, p_val_col = 'padj')
+gsea_plots[['RB_joint_reactome']]
+```
+
+```{r, fig.height=8}
+gsea_results.rb.hallmarkkegg.joint <- combine_GSEA_results(
+  c(gsea_results.rb.hallmark, gsea_results.rb.kegg),
+  c(rb_pathways$Hallmark, rb_pathways$Kegg))
+gsea_plots[['RB_joint_hallmark+kegg']] <- gseaDotplot_joint(gsea_results.rb.hallmarkkegg.joint, p_val_col = 'padj', use_shortened_pathway_names = FALSE)
+gsea_plots[['RB_joint_hallmark+kegg']]
+```
+
+# Network analysis
+
+## Cytospace outputs
+
+### All pathways
+
+```{r, eval = FALSE}
+outfile <- here('outputs/cytospace/pathways.sif')
+outfile<- file(outfile)
+outlines <- lapply(names(gmt.file[unname(unlist(c(pbmc_pathways, rb_pathways)))]), function(pathway) {
+  paste(pathway, 'member', paste0(gmt.file[[pathway]], collapse = ' '))
+})
+writeLines(unlist(outlines), outfile)
+close(outfile)
+```
+
+### Leading edge networks
+
+#### RB
+
+##### W12 v pre
+
+```{r, eval = FALSE}
+outfile <- here('outputs/cytospace/rb-W12_v_pre-reactome-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.rb.reactome$W12_v_pre %>%
+  filter(pathway %in% rb_pathways$Reactome)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/rb-W12_v_pre-hallmark&kegg-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.rb.kegg$W12_v_pre %>%
+  filter(pathway %in% rb_pathways$Kegg)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+res <- gsea_results.rb.hallmark$W12_v_pre %>%
+  filter(pathway %in% rb_pathways$Hallmark)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+```
+
+##### W18 v pre
+
+```{r, eval = FALSE}
+outfile <- here('outputs/cytospace/rb-W18_v_pre-reactome-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.rb.reactome$W18_v_pre %>%
+  filter(pathway %in% rb_pathways$Reactome)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/rb-W18_v_pre-hallmark&kegg-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.rb.kegg$W18_v_pre %>%
+  filter(pathway %in% rb_pathways$Kegg)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+res <- gsea_results.rb.hallmark$W18_v_pre %>%
+  filter(pathway %in% rb_pathways$Hallmark)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+```
+
+##### W18 v W12
+
+```{r, eval = FALSE}
+outfile <- here('outputs/cytospace/rb-W18_v_W12-reactome-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.rb.reactome$W18_v_W12 %>%
+  filter(pathway %in% rb_pathways$Reactome)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/rb-W18_v_W12-hallmark&kegg-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.rb.kegg$W18_v_W12 %>%
+  filter(pathway %in% rb_pathways$Kegg)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+res <- gsea_results.rb.hallmark$W18_v_W12 %>%
+  filter(pathway %in% rb_pathways$Hallmark)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+```
+
+#### PBMC
+
+##### W12 v pre
+
+```{r, eval = FALSE}
+outfile <- here('outputs/cytospace/pbmc-W12_v_pre-reactome-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.reactome$W12_v_pre %>%
+  filter(pathway %in% pbmc_pathways$Reactome)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/pbmc-W12_v_pre-kegg-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.kegg$W12_v_pre %>%
+  filter(pathway %in% pbmc_pathways$KEGG)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/pbmc-W12_v_pre-hallmark-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.hallmark$W12_v_pre %>%
+  filter(pathway %in% pbmc_pathways$Hallmark)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+```
+
+##### W18 v pre
+
+```{r, eval = FALSE}
+outfile <- here('outputs/cytospace/pbmc-W18_v_pre-reactome-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.reactome$W18_v_pre %>%
+  filter(pathway %in% pbmc_pathways$Reactome)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/pbmc-W18_v_pre-kegg-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.kegg$W18_v_pre %>%
+  filter(pathway %in% pbmc_pathways$KEGG)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/pbmc-W18_v_pre-hallmark-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.hallmark$W18_v_pre %>%
+  filter(pathway %in% pbmc_pathways$Hallmark)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+```
+
+##### W18 v W12
+
+```{r, eval = FALSE}
+outfile <- here('outputs/cytospace/pbmc-W18_v_W12-reactome-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.reactome$W18_v_W12 %>%
+  filter(pathway %in% pbmc_pathways$Reactome)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/pbmc-W18_v_W12-kegg-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.kegg$W18_v_W12 %>%
+  filter(pathway %in% pbmc_pathways$KEGG)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+
+outfile <- here('outputs/cytospace/pbmc-W18_v_W12-hallmark-leading_edge.sif')
+outfile <- file(outfile)
+outlines <- c()
+
+res <- gsea_results.pbmc.hallmark$W18_v_W12 %>%
+  filter(pathway %in% pbmc_pathways$Hallmark)
+le <- setNames(lapply(res$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             res$pathway)
+outlines <- c(outlines, lapply(names(le), function(pathway) {
+  paste(pathway, 'leading_edge', paste0(le[[pathway]], collapse = ' '))
+}))
+
+writeLines(unlist(outlines), outfile)
+close(outfile)
+```
+
+## Cluster Profiler
+
+```{r my_network_plot, eval = FALSE}
+network_plot <- function(dge_result,
+                         gsea_result, 
+                         pathways, 
+                         filter=NA,
+                         shared_only=TRUE,
+                         gmt=gmt.file,
+                         lfc_col='log2FoldChange',
+                         pval_col='padj',
+                         alpha = 0.05){
+  dge_result <- dge_result %>% rownames_to_column('gene')
+  gsea_result <- gsea_result %>% filter(pathway %in% pathways)
+  gmt <- gmt[pathways]
+  ## Remove genes without data
+  gmt <- lapply(gmt, function(y) {y[y %in% dge_result$gene]})
+  
+  if (filter=='significant') {
+    genes <- intersect(unname(unlist(gmt[pathways])), dge_result$gene[dge_result[[pval_col]] < alpha])
+    gmt <- lapply(gmt, function(y) {y[y %in% genes]})
+  } else if (filter == 'leadingEdge') {
+    gmt <- setNames(
+      lapply(gsea_result$leadingEdge, function(x) unlist(strsplit(x, ', '))),
+             gsea_result$pathway)
+    # gmt <- lapply(gmt, function(y) {y[y %in% genes]})
+    genes <- unname(unlist(gmt[pathways]))
+  } else {
+    genes <- unname(unlist(gmt[pathways]))
+  }
+  if (shared_only) {
+    genes <- names(table(genes)[table(genes) >1])
+    gmt <- lapply(gmt, function(y) {y[y %in% genes]})
+  }
+  
+  for (pathway in names(gmt)) {
+    if (length(gmt[[pathway]]) == 0) {
+      warning(paste0(pathway, ' has no genes with data. Omitting.\n'))
+      gmt[[pathway]] <- NULL
+    }
+  }
+  
+  dge_result <- dge_result %>% filter(gene %in% genes)
+  
+  fc <- setNames(dge_result[[lfc_col]], dge_result$gene)
+  # hilight <- setNames(dge_result$padj < alpha, dge_result$gene)
+  # hilight1 <- c(hilight[hilight], pathways)
+  # x <- gmt[pathways]
+  # x <- lapply(x, function(y) {y[y %in% genes]})
+  
+  p1 <- cnetplot(gmt,
+                 # showCategory=5,
+                 color.params = list(foldChange = fc),
+                 # hilight.params = list(category = 'HALLMARK_INFLAMMATORY_RESPONSE',
+                 #                       alpha_hilight = 1,
+                 #                       alpha_hilight = 0)
+                 ) +
+    scale_color_gradient2(name='Log2 fold-change', low='darkblue', mid = '#B3B3B3', high='firebrick', midpoint = 0)
+  # p1$data <- p1$data %>%
+  #   mutate(alpha = case_when(
+  #     !(name %in% hilight) ~ 1,
+  #     hilight[name] ~ 1,
+  #     !highlight[name] ~ 0.1
+  #   )
+  p1
+}
+
+```
+
+```{r,fig.width=14, fig.height=10, eval = FALSE}
+tmp <- network_plot(dge_result = dge_results.rb$W12_v_pre,
+             gsea_result = gsea_results.rb.reactome$W12_v_pre,
+               pathways = rb_pathways$Reactome, filter = 'leadingEdge')
+tmp
+size <- setNames(-log(dge_results.rb$W12_v_pre$padj),
+                 rownames(dge_results.rb$W12_v_pre))
+tmp1 <- ggplot_build(tmp)
+# tmp1$data[[1]]$edge_alpha <- 0
+point_labels <- tmp1$data[[4]]$label
+# tmp1$data[[3]]$size <- 8
+
+indices <- match(point_labels, names(size))
+
+# Update the Value column in the dataframe where there are matching indices
+tmp1$data[[3]]$size[!is.na(indices)] <- scales::rescale(size[indices[!is.na(indices)]], c(1,3))
+
+
+
+tmp2 <- ggplot_gtable(tmp1)
+plot(tmp2)
+
+# layer 1 idk
+# layer 2 grey dots
+# layer 3 color dots
+# layer 4 labels
+# hilight <- setNames(dge_results.rb$W12_v_pre$padj < 0.05, rownames(dge_results.rb$W12_v_pre))
+# # 
+# tmp$data$alpha <- 0.1
+# tmp$data %>%
+#     mutate(alpha = case_when(
+#       grepl('_', name, fixed=TRUE) ~ 1,
+#       !(name %in% hilight) ~ 0.1,
+#       hilight[name] ~ 1,
+#       !hilight[name] ~ 0.1,
+#     ))
+# tmp2 <- tmp + aes(alpha = alpha)
+# tmp2
+```
+
+```{r, fig.width=10, fig.height=10, eval = FALSE}
+index <- gsea_results.rb.hallmark$W12_v_pre$pathway %in% rb_pathways$Hallmark
+genes <- unname(unlist(gmt.file[rb_pathways$Hallmark]))
+fc <- dge_results.rb$W12_v_pre %>% 
+  rownames_to_column('gene') %>%
+  filter(gene %in% genes)
+fc <- setNames(as.numeric(fc$shrunk_LFC), fc$gene)
+
+color <- scale_color_gradient()
+# fc <- 
+# names(fc) <- 
+# size <- -log(gsea_results.rb.hallmark$W12_v_pre$padj[index])
+tmp <- cnetplot(x = gmt.file[rb_pathways$Hallmark],
+         # foldChange=fc
+         color.params = list(foldChange=fc)
+         ) +
+    scale_color_gradient2(name='associated data', low='darkblue', high='firebrick')
+tmp
+```
+
+# Render outfile
+
+```{r}
+rmarkdown::render(here::here('scripts/figure_requests.format.Rmd'),
+                  output_file = 'figure_requests.html',
+                  output_dir = here::here('reports'),
+                  params = list(
+                    title = 'Figure requests')
+                  )
+```
+

@@ -1,0 +1,158 @@
+---
+title: "p23259 Gerardo figure requests"
+author: "ENPRC Genomics Core"
+date:  "`r Sys.Date()`"
+output: 
+  rmdformats::robobook:
+    fig_width: 9
+    css: "stylesheets/robobook.css"
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = TRUE,
+                      message = TRUE, 
+                      echo=FALSE, 
+                      fig.width = 8, 
+                      fig.height = 4)
+```
+
+# PBMC
+
+## 12 v pre
+
+### Reactome
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-12_reactome']] 
+```
+
+### KEGG
+
+```{r, fig.height=6}
+gsea_plots[['PBMC_ind_pre-v-12_kegg']]
+```
+
+### Hallmark
+
+```{r, fig.height=6}
+gsea_plots[['PBMC_ind_pre-v-12_hallmark']]
+```
+
+## 18 v pre
+
+### Reactome
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_pre-v-18_reactome']]
+```
+
+### KEGG
+
+```{r, fig.height=6}
+gsea_plots[['PBMC_ind_pre-v-18_kegg']]
+```
+
+### Hallmark
+
+```{r, fig.height=6}
+gsea_plots[['PBMC_ind_pre-v-18_hallmark']]
+```
+
+## 18 v 12
+
+### Reactome
+
+```{r, fig.height=10}
+gsea_plots[['PBMC_ind_18-v-12_reactome']]
+```
+
+### KEGG
+
+```{r, fig.height=6}
+gsea_plots[['PBMC_ind_18-v-12_kegg']]
+```
+
+### Hallmark
+
+```{r, fig.height=6}
+gsea_plots[['PBMC_ind_18-v-12_hallmark']]
+```
+
+## Joint
+
+### Reactome
+
+```{r, fig.height=9}
+gsea_plots[['PBMC_joint_reactome']]
+```
+
+### KEGG
+
+```{r, fig.height=7}
+gsea_plots[['PBMC_joint_kegg']]
+```
+
+### Hallmark
+
+```{r, fig.height=7}
+gsea_plots[['PBMC_joint_hallmark']]
+```
+
+# RB
+
+## 12 v pre
+
+### Reactome
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-12_reactome']] 
+```
+
+### Hallmark & KEGG
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-12_hallmark&kegg']]
+```
+
+## 18 v pre
+
+### Reactome
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_pre-v-18_reactome']]
+```
+
+### Hallmark & KEGG
+
+```{r, fig.height=6}
+gsea_plots[['RB_ind_pre-v-18_hallmark&kegg']]
+```
+
+## 18 v 12
+
+### Reactome
+
+```{r, fig.height=10}
+gsea_plots[['RB_ind_18-v-12_reactome']]
+```
+
+### Hallmark & KEGG
+
+```{r, fig.height=6}
+gsea_plots[['RB_ind_18-v-12_hallmark&kegg']]
+```
+
+## Joint
+
+### Reactome
+
+```{r, fig.height=10}
+gsea_plots[['RB_joint_reactome']]
+```
+
+### Hallmark & KEGG
+
+```{r, fig.height=8}
+gsea_plots[['RB_joint_hallmark+kegg']]
+```
