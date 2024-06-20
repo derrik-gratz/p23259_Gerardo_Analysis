@@ -130,7 +130,7 @@ summary(result)
 ```
 
 ```{r}
-generateVolcanoPlot(result)
+generateVolcanoPlot(result, labels = 10)
 ```
 
 ```{r}

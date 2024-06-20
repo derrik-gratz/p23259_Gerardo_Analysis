@@ -1,0 +1,12 @@
+Jun 4 meeting
+-------------
+
+How to visualize pathways? Dotplots of multiple? Running enrichment plots?
+  Individual plots for supplement
+  Joint contrast for main figures
+  Conserved
+Plot PBMC or RB data? 
+What is needed for network plots? 
+  Start within sources
+  Start with clusterprofiler gene concept networks
+  Can combine the lone kegg pathway with hallmark or reactome
