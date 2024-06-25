@@ -12,7 +12,6 @@
 result <- model_results[['{{i}}']]
 ```
 
-
 ```{r}
 summary(result)
 ```
@@ -22,7 +21,7 @@ print(result@elementMetadata$description[2])
 ```
   
 ```{r, fig.width=8, fig.height=5}
-generateVolcanoPlot(result)
+generateVolcanoPlot(result, labels = getTopNGenes(result, N = 10, exclude_ENS = TRUE))
 ```
 
 ```{r}
