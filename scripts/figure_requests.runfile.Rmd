@@ -789,6 +789,160 @@ tmp <- cnetplot(x = gmt.file[rb_pathways$Hallmark],
 tmp
 ```
 
+# Running enrichment score plots
+
+```{r}
+# Reactomes – Signaling by interleukins, interferon signaling, toll like receptor cascade, interferon gamma signaling
+# KEGG – B cell receptor signaling pathway.
+# Hallmark – inflammatory response
+
+
+```
+
+
+```{r, re_plot_functions}
+calc_GSEA_stats <- function(result, na_omit=TRUE) {
+  if (na_omit) {
+    result <- stats::na.omit(result) 
+  }
+  fgsea_data <- result$stat
+  names(fgsea_data) <- rownames(result)
+  fgsea_data <- fgsea_data[!is.na(fgsea_data)]
+  fgsea_data <- sort(fgsea_data, decreasing = TRUE)
+  return(fgsea_data)
+}
+
+my_plotEnrichment <- function(pathway, stats,
+                                gseaParam=1,
+                                ticksSize=0.2) {
+    
+    statsAdj <- stats / max(abs(stats))
+    indices <- na.omit(match(pathway, names(statsAdj)))
+    indices <- sort(indices)
+    
+    gseaRes <- fgsea::calcGseaStat(statsAdj,
+                                   selectedStats = indices,
+                            returnAllExtremes = TRUE)
+    bottoms <- gseaRes$bottoms
+    tops <- gseaRes$tops
+    
+    n <- length(statsAdj)
+    xs <- as.vector(rbind(indices - 1, indices))
+    ys <- as.vector(rbind(bottoms, tops))
+    toPlot <- data.frame(x=c(xs), y=c(ys), genes = as.vector(rbind(names(tops),names(tops))), tops=as.vector(rbind(rep(FALSE, length(tops)), rep(TRUE,length(tops)))))
+    return(toPlot)
+}
+running_es_plot <- function(gsea_stats){
+  if (class(gsea_stats) == 'list') { ## can't use is.list cause apparently dataframes are lists
+    gsea_stats <- lapply(gsea_stats, function(x) {
+      x[nrow(x)+1,] <- c(0,0,'Starting',FALSE)
+      x[nrow(x)+1,] <- c(max(as.numeric(x$x))+1,0,'Ending',FALSE)
+      x
+      })
+    gsea_stats <- data.table::rbindlist(gsea_stats, idcol='source')
+  } else {
+    gsea_stats[nrow(gsea_stats)+1,] <- c(0,0,'Starting',FALSE)
+    gsea_stats[nrow(gsea_stats)+1,] <- c(max(gsea_stats$x)+1,0,'Ending',FALSE)
+    gsea_stats$source <- NA
+  }
+  gsea_stats <- gsea_stats %>% arrange(x)
+  colnames(gsea_stats) <- c('source', "RANK.IN.GENE.LIST", "RUNNING.ES", "GENE", "actual")
+  gsea_stats$RANK.IN.GENE.LIST <- as.numeric(gsea_stats$RANK.IN.GENE.LIST)
+  gsea_stats$RUNNING.ES <- as.numeric(gsea_stats$RUNNING.ES)
+  gsea_stats$source <- as.character(gsea_stats$source)
+  
+  p <- ggplot(gsea_stats, aes(x=RANK.IN.GENE.LIST, y=RUNNING.ES, color=source, group=source)) +
+        scale_x_continuous(expand=c(0.01,0.01)) +
+        geom_line(size=1, alpha=0.8) +
+    geom_hline(data = gsea_stats %>% 
+                 group_by(source) %>%
+                 filter(abs(RUNNING.ES) == max(abs(RUNNING.ES))),
+               aes(yintercept = RUNNING.ES, color = source), lty = 'dashed', alpha = 0.6) +
+        # geom_point(size=3, alpha=0.8) +
+        # scale_shape_manual(values=c(1, 16)) +
+        # scale_color_discrete() +
+        theme(legend.position = c(10000, .5),# legend.title = element_blank(),
+              legend.background = element_rect(fill = "transparent")) + 
+    ylab("Running Enrichment Score") + xlab("Position in ranked gene list") +
+    theme_classic(11) +
+        theme(panel.grid.major = element_line(colour = "grey92"),
+              panel.grid.minor = element_line(colour = "grey92"),
+              panel.grid.major.y = element_line(colour = "grey92"),
+              panel.grid.minor.y = element_line(colour = "grey92"),
+              # axis.text.x=element_blank(),
+              # axis.ticks.x=element_blank(),
+              # axis.line.x=element_blank(),
+              plot.margin=margin(t=.2, r = .2, b=0, l=.2, unit="cm")) +
+        labs(color="Dataset") +
+    geom_hline(yintercept = 0, color = 'grey40')#+ guides(shape='none')
+      
+  #     gsea_xcomp.single <- gsea_stats %>% filter(actual==TRUE)
+  #     gsea_xcomp.single$height <- abs(gsea_xcomp.single$RUNNING.ES -
+  #                                       (gsea_stats[gsea_stats$actual==FALSE,'RUNNING.ES']))
+  #     gsea_xcomp.single$height <- gsea_xcomp.single$height/max(gsea_xcomp.single$height)
+  #     gsea_xcomp.single$y <- (2*as.integer(as.factor(gsea_xcomp.single$source)))-1
+  #     #non scaled heights
+  #     gsea_xcomp.single$height <- 1#gsea_xcomp.single$height/max(gsea_xcomp.single$height)
+  #     gsea_xcomp.single$y <- (1*as.integer(as.factor(gsea_xcomp.single$source)))-1
+  #     # 
+  #     p2 <- ggplot(gsea_xcomp.single, aes(x = RANK.IN.GENE.LIST)) +
+  #       geom_linerange(aes(ymin=y, ymax=y+height, color=source)) +
+  #       xlab('Rank in Ordered Dataset') + ylab(NULL) + theme_classic(11) +
+  #       theme(legend.position = "none",
+  #             plot.margin = margin(t=-.5, b=0,unit="cm"),
+  #             axis.ticks.y = element_blank(),
+  #             axis.text.y = element_blank(),
+  #             panel.border = element_rect(colour = "black", fill=NA, size=1)) + #,
+  #       #    axis.line.x = element_blank()) +
+  #       scale_x_continuous(expand=c(0.01,0.01)) +
+  #       scale_y_continuous(expand=c(0,0)) +
+  # theme(plot.margin = margin(t=0,r=2,b=0,l=1.3, "cm"))#+
+      # scaled
+      # geom_hline(yintercept=2*(unique(as.integer(as.factor(gsea_xcomp$source)))-1))
+      # non scaled
+      # geom_hline(yintercept=1*(unique(as.integer(as.factor(gsea_stats$source)))-1))
+      p
+  # cowplot::plot_grid(plotlist=list(p,p2),
+  #           ncol=1, align="v",
+  #           rel_heights = c(1, .1*2)
+  #           # rel_widths = c(1,0.6)
+  # )
+}
+```
+
+```{r}
+for (pathway in c('REACTOME_SIGNALING_BY_INTERLEUKINS',
+  'REACTOME_INTERFERON_SIGNALING',
+  'REACTOME_TOLL_LIKE_RECEPTOR_CASCADES',
+  'REACTOME_INTERFERON_GAMMA_SIGNALING',
+  'KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY',
+  'HALLMARK_INFLAMMATORY_RESPONSE')) {
+ 
+  tmp <- list(
+    my_plotEnrichment(unique(gmt.file[[pathway]]), calc_GSEA_stats(dge_results.pbmc$W12_v_pre)),
+    my_plotEnrichment(unique(gmt.file[[pathway]]), calc_GSEA_stats(dge_results.pbmc$W18_v_pre)),
+    my_plotEnrichment(unique(gmt.file[[pathway]]), calc_GSEA_stats(dge_results.pbmc$W18_v_W12))
+  )
+  names(tmp) <- c('W12_v_pre', 'W18_v_pre', 'W18_v_W12')
+  gsea_plots[[paste0('PBMC_', pathway)]] <- running_es_plot(tmp) + 
+    ggtitle(pathway)
+  
+  tmp <- list(
+    my_plotEnrichment(unique(gmt.file[[pathway]]), calc_GSEA_stats(dge_results.rb$W12_v_pre)),
+    my_plotEnrichment(unique(gmt.file[[pathway]]), calc_GSEA_stats(dge_results.rb$W18_v_pre)),
+    my_plotEnrichment(unique(gmt.file[[pathway]]), calc_GSEA_stats(dge_results.rb$W18_v_W12))
+  )
+  names(tmp) <- c('W12_v_pre', 'W18_v_pre', 'W18_v_W12')
+  gsea_plots[[paste0('RB_', pathway)]] <- running_es_plot(tmp) + 
+    ggtitle(pathway)
+}
+```
+
+```{r}
+gsea_plots$RB_REACTOME_INTERFERON_SIGNALING
+```
+
+
 # Render outfile
 
 ```{r}

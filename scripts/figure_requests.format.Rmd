@@ -99,6 +99,44 @@ gsea_plots[['PBMC_joint_kegg']]
 gsea_plots[['PBMC_joint_hallmark']]
 ```
 
+## Running enrichment plots {.tabset}
+
+### HALLMARK_INFLAMMATORY_RESPONSE
+
+```{r}
+gsea_plots$PBMC_HALLMARK_INFLAMMATORY_RESPONSE
+```
+
+### REACTOME_INTERFERON_GAMMA_SIGNALING
+
+```{r}
+gsea_plots$PBMC_REACTOME_INTERFERON_GAMMA_SIGNALING
+```
+
+### REACTOME_INTERFERON_SIGNALING
+
+```{r}
+gsea_plots$PBMC_REACTOME_INTERFERON_SIGNALING
+```
+
+### REACTOME_SIGNALING_BY_INTERLEUKINS
+
+```{r}
+gsea_plots$PBMC_REACTOME_SIGNALING_BY_INTERLEUKINS
+```
+
+### REACTOME_TOLL_LIKE_RECEPTOR_CASCADES
+
+```{r}
+gsea_plots$PBMC_REACTOME_TOLL_LIKE_RECEPTOR_CASCADES
+```
+
+### KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY
+
+```{r}
+gsea_plots$PBMC_KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY
+```
+
 # RB
 
 ## 12 v pre
@@ -155,4 +193,42 @@ gsea_plots[['RB_joint_reactome']]
 
 ```{r, fig.height=8}
 gsea_plots[['RB_joint_hallmark+kegg']]
+```
+
+## Running enrichment plots {.tabset}
+
+### HALLMARK_INFLAMMATORY_RESPONSE
+
+```{r}
+gsea_plots$RB_HALLMARK_INFLAMMATORY_RESPONSE
+```
+
+### REACTOME_INTERFERON_GAMMA_SIGNALING
+
+```{r}
+gsea_plots$RB_REACTOME_INTERFERON_GAMMA_SIGNALING
+```
+
+### REACTOME_INTERFERON_SIGNALING
+
+```{r}
+gsea_plots$RB_REACTOME_INTERFERON_SIGNALING
+```
+
+### REACTOME_SIGNALING_BY_INTERLEUKINS
+
+```{r}
+gsea_plots$RB_REACTOME_SIGNALING_BY_INTERLEUKINS
+```
+
+### REACTOME_TOLL_LIKE_RECEPTOR_CASCADES
+
+```{r}
+gsea_plots$RB_REACTOME_TOLL_LIKE_RECEPTOR_CASCADES
+```
+
+### KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY
+
+```{r}
+gsea_plots$RB_KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY
 ```
